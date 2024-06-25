@@ -1,0 +1,6 @@
+### Try the DID package
+library(did)
+set.seed(1814)
+time.periods <- 4
+te.e <- 1:time.periods
+dta <- build_sim_dataset()

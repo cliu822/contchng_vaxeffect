@@ -1,0 +1,9 @@
+"0","df_lca4_cov%>%
+  left_join(df_lca4_cov%>%filter(var==""socdist_cat__r1"")%>%
+              group_by(lca4_full)%>%dplyr::summarise(tot=sum(n)))%>%
+  mutate(prop = round((n/tot)*100,digits = 1),
+         prop = paste0(prop,""%""))%>%
+  dplyr::select(-n, -tot)%>%
+  pivot_wider(names_from = ""lca4_full"", values_from = ""prop"")
+"
+"2","Joining with `by = join_by(lca4_full)`"

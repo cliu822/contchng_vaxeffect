@@ -1,0 +1,37 @@
+"0","p1c<- vax_cont_long_full%>%
+                filter(outcome==""val99_all"")%>%
+                group_by(round,vax_cat2)%>%
+                summarise(n=n())%>%
+                mutate(period = case_when(
+                  round==""r2""~""R1-R2"",
+                  round==""r3""~""R2-R3"",
+                  round==""r4""~""R3-R4""
+                ),
+                       vax_status = case_when(
+                  vax_cat2==""a0_unvax""~""Remain unvax"",
+                  vax_cat2==""a1_first_new""~""New 1st dose"",
+                  vax_cat2==""a2_full_new"" ~""New both/2nd dose"",
+                  vax_cat2==""a3_full_vax""~""Already fully vaxed""
+                    
+                       ))%>%
+                ggplot(aes(x=period, y=n, fill=vax_status))+
+                geom_bar(position=""stack"", stat=""identity"", width=0.5)+
+                #scale_fill_manual(values = c(""#A1D99B"",""#FED976"",""#FFEDA0"",""#FFFFCC"",""#FC9272""))+
+                scale_fill_brewer(palette = ""YlGnBu"")+
+                ggtitle(""C. Distribution of changes in vaccination status"")+xlab("""")+ylab(""No. participants"")+
+                ylim(0,2600)+
+                coord_flip()+
+                theme_classic()+
+                theme(legend.title=element_blank(),
+                      legend.position = ""bottom"",
+                      legend.key.size = unit(0.3, 'cm'), #change legend key size
+                                legend.key.height = unit(0.3, 'cm'), #change legend key height
+                                legend.key.width = unit(0.3, 'cm'),
+                                legend.text=element_text(size=12),
+                                axis.text = element_text(size = 14),
+                                axis.title=element_text(size=14),
+                                legend.margin=margin(c(1,1,1,1)),
+                      plot.title = element_text(size = 16))
+"
+"2","`summarise()` has grouped output by 'round'. You can override using the `.groups` argument."
+"0",""

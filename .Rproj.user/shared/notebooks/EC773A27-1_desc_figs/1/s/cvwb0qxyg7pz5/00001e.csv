@@ -1,0 +1,13 @@
+"0","png(""0_plot/2_meancont_vaxcovall.png"",width=10,height=8, units=""in"",res=600)
+#grid.arrange(p1,p8,p10,ncol=2,nrow=2,
+#             layout_matrix=rbind(c(1,2),c(1,3)))
+gridExtra::grid.arrange(ps1c,ps1c2,ncol=1, nrow=3, 
+                        layout_matrix=rbind(1,1,2))
+dev.off()
+"
+"1","null device "
+"1","
+"
+"1","          1 "
+"1","
+"

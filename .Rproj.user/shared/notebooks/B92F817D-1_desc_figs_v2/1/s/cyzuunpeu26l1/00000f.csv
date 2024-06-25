@@ -1,0 +1,7 @@
+"0","##Contact change over time by income"
+"0","df_cont_cov%>%"
+"0","            group_by(income_cat,round)%>%"
+"0","            summarise(mean = mean(val99_all))%>%"
+"0","  ggplot(aes(x=round, y=mean, color=income_cat, group=income_cat))+"
+"0","  geom_line()"
+"2","`summarise()` has grouped output by 'income_cat'. You can override using the `.groups` argument."

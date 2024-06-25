@@ -1,0 +1,11 @@
+"0","df_lca4_cov <- df_behav%>%"
+"0","  dplyr::select(lca4_full, socdist_cat__r1:sanicat__r1)%>%"
+"0","  pivot_longer(cols=socdist_cat__r1:sanicat__r1, names_to=""var"",values_to=""val"")%>%"
+"0","  group_by(lca4_full,var,val)%>%"
+"0","  dplyr::summarise(n=n())"
+"1","[1m[33mError[39m in `pivot_longer()`:[22m
+[33m![39m Can't combine `socdist_cat__r1` <factor<5a740>> and `soapcat__r1` <double>.
+Backtrace:
+[90m 1. [39m... %>% dplyr::summarise(n = n())
+[90m 5. [39m[1m[94mtidyr:::pivot_longer.data.frame([39m[22m., cols = socdist_cat__r1:sanicat__r1, names_to = ""var"", values_to = ""val""[1m[94m)[39m[22m
+"

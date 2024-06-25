@@ -1,0 +1,26 @@
+{
+    "id": "2CD4DFC3",
+    "path": "~/DIssertation/Aim 1/COVIDVu Data/2_model_vax_contchng_v3.R",
+    "project_path": "2_model_vax_contchng_v3.R",
+    "type": "r_source",
+    "hash": "3116727602",
+    "contents": "",
+    "dirty": false,
+    "created": 1695356070178.0,
+    "source_on_save": false,
+    "relative_order": 6,
+    "properties": {
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "128,21",
+        "scrollLine": "0"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1695840204,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1695840204221,
+    "read_only": false,
+    "read_only_alternatives": []
+}

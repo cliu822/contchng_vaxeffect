@@ -1,0 +1,10 @@
+"0","df_cont_cov%>%
+         filter(round!=""r1"")%>%             ##Remove round1
+         group_by(vax_cat,round)%>%       
+         summarise(mean = mean(val99_all),  ##Contact outcome is all contact with 99th percentile censorship
+                   n=n(),
+                   sd = sd(val99_all),
+                   min = mean-1.96*(sd/sqrt(n)),
+                   max = mean+1.96*(sd/sqrt(n)))
+"
+"2","`summarise()` has grouped output by 'vax_cat'. You can override using the `.groups` argument."

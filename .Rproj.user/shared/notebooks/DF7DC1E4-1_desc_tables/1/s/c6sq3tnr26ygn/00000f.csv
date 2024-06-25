@@ -1,0 +1,23 @@
+"0","library(openxlsx)"
+"2","Warning: package ‘openxlsx’ was built under R version 4.2.1"
+"0","library(dplyr)"
+"2","Warning: package ‘dplyr’ was built under R version 4.2.3"
+"2","
+Attaching package: ‘dplyr’
+
+"
+"2","The following objects are masked from ‘package:stats’:
+
+    filter, lag
+
+"
+"2","The following objects are masked from ‘package:base’:
+
+    intersect, setdiff, setequal, union
+
+"
+"0","library(tidyr)"
+"2","Warning: package ‘tidyr’ was built under R version 4.2.3"
+"0","df_cont_cov <- readRDS(""0_RDSdata/3_cont_long_cov.RDS"")"
+"0","df_behav <- readRDS(""0_RDSdata/2_behavior_r1r2r3r4.RDS"") #Wide version of behavior info r1-r4"
+"0",""

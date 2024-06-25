@@ -1,0 +1,196 @@
+---
+title: "1_desc_tables"
+output: html_document
+date: "2023-08-01"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+*Inputs*: 
+          1) Contact data in long form with various truncation methods in wide form as columns, and both time-varying/time-invariant covariates as columns
+*Computes*:
+          1) Mean contact rate by location and by truncation method over round, stratified by time-invariant covariates
+          2) Mean contact rate by location and by truncation method over round, stratified by time-varying covariates (table also includes changing proportions over time)
+
+
+*Output*: Excels where each sheet is a different contact location and truncation method outcome 
+                1) all contacts; 
+                2) work contacts; 
+                3) other contacts;
+                4) home contacts;
+                5) school contacts
+          with the following types of location-specific right censoring to exclude extreme outlier responses unlikely to be accurate:
+                1)Censoring at 100 contact (CoMix);
+                2)Censoring at 99th percentile;
+                3)Censoring at 97.5th percentile;
+                4)Censoring at 95th percentile
+            
+
+## R Markdown
+```{r}
+library(openxlsx)
+library(dplyr)
+library(tidyr)
+
+df_cont_cov <- readRDS("0_RDSdata/3_cont_long_cov.RDS")
+df_behav <- readRDS("0_RDSdata/2_behavior_r1r2r3r4.RDS") #Wide version of behavior info r1-r4
+
+```
+
+### Table 1s
+Mean contact rate over round by time invariant variables for all contacts
+```{r}
+
+
+##Make data frame into long
+df_cont_cov_long <- df_cont_cov%>%
+                        select(-StringencyIndex,-variant_worry,-variant_worry_cat, -string_cat)%>%  ##Remove continuous versions of variables
+                        select(-orig_home:-orig_work, -orig_all)%>%            ##Remove untruncated contact values
+                        pivot_longer(cols=c(age_cat1:lca4_full,income_cat), names_to = "var",values_to="val")%>%
+                        pivot_longer(cols=val95_home:val100_all,names_to="outcome", values_to="contacts")
+
+cont_cov_list <- split(df_cont_cov_long,df_cont_cov_long$outcome)
+##Function for table
+##Set order of variables
+val_ord <- c(sort(unique(df_cont_cov$age_cat1)),
+             "Female","Male",
+             sort(unique(df_cont_cov$race_eth_i)),
+             "1","2-4","5+",
+             "Dem","Rep","Ind","Unknown Pol",
+             sort(unique(df_cont_cov$emp_cat)),
+             "0_24000","25000_74000","75000_149000","150000",
+             "No","Yes",
+             "High", "Med-high","Med-low","Low")
+
+var_ord <- c("age_cat1","gender_i","race_eth_i","hh_cat","pol_cat","emp_cat","income_cat","comorb_cat","lca4_full")
+
+compute_desc_timeinvar <- function(x){
+                        ##Distribution, proportion and mean and sd contacts by covariates
+                          cov_tab <-x%>%
+                                group_by(round,var,val)%>%
+                                    summarise(n=n(),
+                                    mean=mean(contacts),
+                                    sd = sd(contacts))
+                          
+                          ##Overall mean and sd contacts
+                          overall <- x%>%
+                                group_by(round)%>%
+                                summarise(n=2403,
+                                          mean=mean(contacts),
+                                          sd = sd(contacts))
+                               
+                          tab_desc <-bind_rows(overall,cov_tab)%>%
+                            
+                                    mutate(prop = n/2403,
+                                           lo95 = mean-1.96*(sd/sqrt(n)),
+                                           hi95 = mean+1.96*(sd/sqrt(n)))%>%
+                                    select(-sd)%>%
+                                    mutate_at(vars(c("mean","lo95","hi95")),round,1)%>%
+                                    pivot_wider(names_from = "round",values_from =c("mean","lo95","hi95"))%>%
+                                    mutate(r1 = paste0(mean_r1," (",lo95_r1,"-",hi95_r1, ")"),
+                                           r2 = paste0(mean_r2," (",lo95_r2,"-",hi95_r2, ")"),
+                                           r3 = paste0(mean_r3," (",lo95_r3,"-",hi95_r3, ")"),
+                                           r4 = paste0(mean_r4," (",lo95_r4,"-",hi95_r4, ")"),
+                                           n = paste0(n, " (", round(prop*100, digits = 0),"%)"),
+                                           var = ifelse(is.na(var),"Overall",var),
+                                           val = ifelse(is.na(val),"",val))%>%
+                            
+                                    mutate(var=factor(var, levels=c("Overall",var_ord)),    ##Reordering 
+                                           val=factor(val, levels=c("",val_ord)))%>%
+                                    arrange(var,val)%>%
+                                    select(var,val,n, r1:r4)
+                          
+                          return(tab_desc)
+}
+
+res_desc_timeinvar <- lapply(cont_cov_list,compute_desc_timeinvar)
+names(res_desc_timeinvar) <- names(cont_cov_list)
+write.xlsx(res_desc_timeinvar, "0_tab/res_desc_timeinvar_full.xlsx")
+
+```
+
+### Table SI 1a
+Mean contact rate for all contacts over time by time varying variables
+```{r}
+df_cont_cov <- df_cont_cov %>%
+  
+              mutate(vax_comm_cat_all = case_when(
+                                          is.na(Series_Complete_Pop_Pct)~NA_character_,
+                                          Series_Complete_Pop_Pct<=20~"0%-20%",
+                                          Series_Complete_Pop_Pct<=40~"21%-40%",
+                                          Series_Complete_Pop_Pct<=50~"41%-50%",
+                                          Series_Complete_Pop_Pct<=60~"51%-60%",
+                                          Series_Complete_Pop_Pct<=100~"61%-100%"))
+
+##Make data frame into long
+df_cont_cov_long2 <- df_cont_cov%>%
+                        select(round,p_id,val95_home:val100_all,variant_worry_cat, string_cat,vax_cat, vax_comm_cat_all)%>%  ##Remove continuous versions of variables
+                        select(-orig_all)%>%            ##Remove untruncated contact values
+                        pivot_longer(cols=variant_worry_cat:vax_comm_cat_all, names_to = "var",values_to="val")%>%
+                        pivot_longer(cols=val95_home:val100_all,names_to="outcome", values_to="contacts")%>%
+                        mutate(val=as.character(val))
+
+cont_cov_list2 <- split(df_cont_cov_long2,df_cont_cov_long2$outcome)
+##Function for table for time variant variables 
+compute_desc_timevar <- function(x){
+                        ##Distribution, proportion and mean and sd contacts by covariates
+                          cov_tab <-x%>%
+                                group_by(round,var,val)%>%
+                                    summarise(n=n(),
+                                    mean=mean(contacts),
+                                    sd = sd(contacts))
+                          
+                          ##Overall mean and sd contacts
+                    ##Overall mean and sd contacts
+                        overall <- x%>%
+                          group_by(round)%>%
+                          summarise(n=2403,
+                                    mean=mean(contacts),
+                                    sd = sd(contacts))
+                        
+                        tab_desc <-bind_rows(overall,cov_tab)%>%
+                          mutate(prop = n/2403,
+                                 lo95 = mean-1.96*(sd/sqrt(n)),
+                                 hi95 = mean+1.96*(sd/sqrt(n)))%>%
+                          select(-sd)%>%
+                          mutate_at(vars(c("mean","lo95","hi95")),round,1)%>%
+                          mutate(mean = paste0(mean," (",lo95,"-",hi95, ")"),
+                                 n = paste0(n, " (", round(prop*100, digits = 0),"%)"))%>%
+                          select(round:val)%>%
+                          pivot_wider(names_from = "round",values_from =c("n","mean"))%>%
+                          mutate(var = ifelse(is.na(var),"Overall",var),
+                                 val = ifelse(!var %in% c("Overall")&is.na(val),"Unknown",val),
+                                 val = ifelse(is.na(val),"",val))%>%
+                          
+                          mutate(val = factor(val, levels=c("","High","Med-high","Med-low","Low",
+                                                            "Increased greatly","Increased slightly","No change","Decreased slightly","Decreased greatly",
+                                                            "dose0","dose1","dose2",
+                                                            "0%-20%","21%-40%","41%-50%","51%-60%","61%-100%","Unknown")))%>%
+                          arrange(var,val)%>%
+                          mutate_all(.,~replace_na(.,"-"))%>%
+                          select(var,val, n_r1, mean_r1, n_r2, mean_r2, n_r3, mean_r3, n_r4, mean_r4)
+}
+
+res_desc_timevar <- lapply(cont_cov_list2,compute_desc_timevar)
+names(res_desc_timevar) <- names(cont_cov_list2)
+write.xlsx(res_desc_timevar, "0_tab/res_desc_timevar_full_v2.xlsx")
+```
+
+##Other calculations
+Proportion of total contact at work and other locations. 
+```{r}
+## Work
+4/8.4
+4.8/9.8
+5.3/11.7
+7.5/14.7
+
+##Other
+2.4/8.4
+2.7/9.8
+4.1/11.7
+4.4/14.7
+```
+

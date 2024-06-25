@@ -1,0 +1,14 @@
+"0","df_behav %>%
+              left_join(df_surv_long%>%filter(round==""r2""), by =c(""p_id""=""p_id""))%>%
+              mutate(last_dose_r2 = as.Date(ifelse(!is.na(vaccine_dose2_dt__r2),vaccine_dose2_dt__r2,vaccine_dose1_dt__r2)),
+                     daysincelastdose = as.numeric(date-last_dose_r2))
+"
+"1","[1m[33mError[39m in `mutate()`:[22m
+[38;5;232m[36mℹ[38;5;232m In argument: `last_dose_r2 = as.Date(...)`.[39m
+[1mCaused by error in `as.Date.numeric()`:[22m
+[33m![39m 'origin' must be supplied
+Backtrace:
+[90m  1. [39m... %>% ...
+[90m 10. [39m[1mbase[22m::as.Date.numeric(...)
+[90m 11. [39mbase::stop(""'origin' must be supplied"")
+"

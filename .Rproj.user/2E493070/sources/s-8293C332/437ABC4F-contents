@@ -1,0 +1,323 @@
+library(haven)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(scales)
+
+#### This script is meant to create the datasets
+
+## Read in Kristin's file for reference, maybe confirm with her where the GENDER_I, AGE_I, RACE_ETHNICITY_I, 
+df_k <- read_sas(file.path("Kristin_frz30nov.SAS7BDat"))
+
+### Read in SAS datasets
+df_enumeration <- read_sas("Final Baseline - Survey with Total AB/enumeration_nat_surveyig.sas7bdat")
+
+hh_enum <- df_enumeration %>%
+            select(p_id, adult_num, child_num, baby_num, hh_num,job_cashier:baby_none )
+
+saveRDS(hh_enum, "0_RDSdata/0_hh_enum.RDS")
+
+hh_memb_long <- df_enumeration %>% 
+                  ## Remove variables on household characteristics
+                  select(p_id, adult1_int1:baby10_contacts) %>%
+                  ## Remove initials because character
+                  select(-ends_with(c("int1","int2","int3","int","init"))) %>% select(-enum_age, -enum_sex, -enum_full)%>%
+                
+                ##Pivot longer by individual and also by the values  
+                pivot_longer(
+                  cols = adult1_age:baby10_contacts,
+                  names_sep = "_",
+                  names_to = c("ind","var")
+                ) %>%
+                # pivot wider so each hh member is one row
+                  pivot_wider(names_from = var, values_from = value) %>%
+                #remove empty rows
+                  filter(!is.na(gen))
+
+## Need the initials to figure out which one of the hh mmebers is the participant
+hh_memb_init <- df_enumeration %>%
+                select(p_id, ends_with("int")) %>%
+                pivot_longer(
+                  cols = adult1_int:baby10_int,
+                  names_sep = "_",
+                  names_to = c("ind","var")
+                ) %>%
+                pivot_wider(names_from = var,values_from = value)
+
+## Join in the intials (different class so apparently couldn't pivot together with the numerics)
+hh_memb_long <- hh_memb_long %>%
+                  left_join(
+                    hh_memb_init, 
+                    by = c("p_id" = "p_id", "ind" = "ind")
+                  )
+
+## Join in the person in the hh chosen to participate
+hh_memb_long <- hh_memb_long %>%
+                  left_join(
+                    df_enumeration %>% select(p_id, enum_init, enum_age, enum_sex),
+                    by = c("p_id" = "p_id")
+                  )
+
+## Now identify which of the hh members was the selected one and flag 
+hh_memb_long <- hh_memb_long %>%
+                mutate(
+                   gen = case_when(
+                         gen==1 ~ "Male",
+                         gen==2 ~ "Female"
+                   ), 
+                   selected = ifelse(int == enum_init & age == enum_age & gen==enum_sex, 1,0)
+                    )
+                
+saveRDS(hh_memb_long, "0_RDSdata/0_hh_members_long.RDS")
+
+df_base <- read_sas("Final Baseline - Survey with Total AB/analysis_nat_surveyig.sas7bdat")   ## Survey weights & imputed for baseline pop
+df_base1 <- read_sas("Final Baseline - Survey with Total AB/baseline_nat_surveyig.sas7bdat")  ## Baseline data
+
+df_3mo <- read_sas("Final Month 3 - Survey with Total Ab and IgG/analysis_nat_m3_abigg.sas7bdat") ## Survey weights & imputed for r2
+df_3mo1 <- read_sas("Final Month 3 - Survey with Total Ab and IgG/month3_nat_surveyig.sas7bdat")  ## R2 data
+
+df_6mo <- read_sas("Month 6 Datasets and Revised Documentation/analysis_nat_m6_ab.sas7bdat")  ## Survey weights & imputed for r3
+df_6mo1 <- read_sas("Month 6 Datasets and Revised Documentation/month6_nat_ab.sas7bdat")      ## R3 data
+
+## Create RDS for the baseline characteristics
+df_base_char <- df_base1 %>% select(
+  p_id:ins_dk,height_ft:pemc_none) %>%
+  
+  left_join(df_6mo1 %>% select(P_ID, political), by = c("p_id" = "P_ID"))
+
+##recat age
+df_base_char <- df_base_char %>%
+                mutate(age_cat1 = case_when(
+                                  p_age <= 24 ~ "18-24",
+                                  p_age <= 34 ~ "25-34",
+                                  p_age <= 44 ~ "35-44",
+                                  p_age <= 54 ~ "45-54",
+                                  p_age <= 64 ~ "55-64",
+                                  p_age > 64  ~ "65+"
+                                            ),
+                       
+                       age_cat2 = case_when(
+                                  p_age <= 29 ~ "18-29",
+                                  p_age <= 39 ~ "30-39",
+                                  p_age <= 49 ~ "40-49",
+                                  p_age <= 59 ~ "50-59",
+                                  p_age >59   ~ "60+"
+                                            ),
+                        
+                       emp_cat = case_when(
+                                employed %in% c(1,2,3) & job_leave ==1 ~ "emp_leave",
+                                employed %in% c(1,2,3) & job_leave == 0 ~ "emp_noleave",
+                                employed %in% c(4,5,6,7,8) ~ "no_emp",
+                                employed == 9 ~ "unk"),
+                       
+                       comorb_cat = ifelse(pemc_none==1,0,1),
+                       
+                       pol_cat = case_when(
+                                political ==1 ~ "rep",
+                                political ==2 ~ "dem",
+                                political ==3 ~ "ind",
+                                political %in% c(4,9,7) ~ "unk"
+                                )
+                       )
+
+saveRDS(df_base_char,"0_RDSdata/0_baseline_characteristics.RDS")
+
+## Calculate total contacts made with individuals of all ages at different locations for baseline data
+df_base1 <- df_base1 %>% mutate(
+  
+          ## Physical
+            phy_home_r1 = rowSums(select(.,intersect(starts_with("phy"), ends_with("home"))), na.rm = T),
+            phy_work_r1 = rowSums(select(.,intersect(starts_with("phy"), ends_with("work"))), na.rm = T),
+            phy_school_r1 = rowSums(select(.,intersect(starts_with("phy"), ends_with("school"))), na.rm = T),
+            phy_other_r1 = rowSums(select(., intersect(starts_with("phy"), ends_with("other"))), na.rm = T),
+            
+          ## Non physical
+            nonphy_home_r1 = rowSums(select(.,intersect(starts_with("nonphy"), ends_with("home"))), na.rm=T),
+            nonphy_work_r1 = rowSums(select(.,intersect(starts_with("nonphy"), ends_with("work"))), na.rm=T),
+            nonphy_school_r1 = rowSums(select(.,intersect(starts_with("nonphy"), ends_with("school"))), na.rm=T),
+            nonphy_other_r1 = rowSums(select(.,intersect(starts_with("nonphy"), ends_with("other"))), na.rm=T),
+            
+          ## Physical and non phys for all locations
+            phy_all_r1 = phy_home_r1 + phy_work_r1 + phy_school_r1 + phy_other_r1,
+            nonphy_all_r1 = nonphy_home_r1 + nonphy_work_r1 + nonphy_school_r1 + nonphy_other_r1,
+          
+          ## All contacts
+            contact_all_r1 = phy_all_r1+ nonphy_all_r1)
+
+## Calculate total contacts made with individuals of all ages at different locations for R2
+df_3mo1 <- df_3mo1 %>% mutate(
+          
+          ## Physical
+                    phy_home_r2 = rowSums(select(.,intersect(starts_with("phy"), ends_with("home"))), na.rm = T),
+                    phy_work_r2 = rowSums(select(.,intersect(starts_with("phy"), ends_with("work"))), na.rm = T),
+                    phy_school_r2 = rowSums(select(.,intersect(starts_with("phy"), ends_with("school"))), na.rm = T),
+                    phy_other_r2 = rowSums(select(., intersect(starts_with("phy"), ends_with("other"))), na.rm = T),
+          
+         ## Non physical          
+                    nonphy_home_r2 = rowSums(select(.,intersect(starts_with("nonphy"), ends_with("home"))), na.rm=T),
+                    nonphy_work_r2 = rowSums(select(.,intersect(starts_with("nonphy"), ends_with("work"))), na.rm=T),
+                    nonphy_school_r2 = rowSums(select(.,intersect(starts_with("nonphy"), ends_with("school"))), na.rm=T),
+                    nonphy_other_r2 = rowSums(select(.,intersect(starts_with("nonphy"), ends_with("other"))), na.rm=T),
+        
+          ## Physical and non phys for all locations    
+                    phy_all_r2 = phy_home_r2+phy_work_r2+phy_school_r2+phy_other_r2,
+                    nonphy_all_r2 = nonphy_home_r2+ nonphy_work_r2 + nonphy_school_r2 + nonphy_other_r2,
+          
+         ## All contacts
+                    contact_all_r2 = phy_all_r2 + nonphy_all_r2)
+
+## Calculate total contacts made with individuals of all ages at different locations for R2
+df_6mo1 <- df_6mo1 %>% mutate(
+          
+          ## Physical
+                    phy_home_r3 = rowSums(select(.,intersect(starts_with("phy"), ends_with("home"))), na.rm = T),
+                    phy_work_r3 = rowSums(select(.,intersect(starts_with("phy"), ends_with("work"))), na.rm = T),
+                    phy_school_r3 = rowSums(select(.,intersect(starts_with("phy"), ends_with("school"))), na.rm = T),
+                    phy_other_r3 = rowSums(select(., intersect(starts_with("phy"), ends_with("other"))), na.rm = T),
+          
+         ## Non physical   
+                    nonphy_home_r3 = rowSums(select(.,intersect(starts_with("nonphy"), ends_with("home"))), na.rm=T),
+                    nonphy_work_r3 = rowSums(select(.,intersect(starts_with("nonphy"), ends_with("work"))), na.rm=T),
+                    nonphy_school_r3 = rowSums(select(.,intersect(starts_with("nonphy"), ends_with("school"))), na.rm=T),
+                    nonphy_other_r3 = rowSums(select(.,intersect(starts_with("nonphy"), ends_with("other"))), na.rm=T),
+        
+         ## Physical and non phys for all locations
+                    phy_all_r3 = phy_home_r3 + phy_work_r3 + phy_school_r3 + phy_other_r3,
+                    nonphy_all_r3 = nonphy_home_r3 + nonphy_work_r3 + nonphy_school_r3 + nonphy_other_r3,
+        
+         ## All contacts
+                    contact_all_r3 = phy_all_r3 + nonphy_all_r3)
+
+## Contacts for all rounds merged in wide form
+df_contact <- df_base1 %>%
+                    select(p_id, phy_home_r1:contact_all_r1) %>% 
+              left_join(
+                df_3mo1 %>%
+                    select(p_id, phy_home_r2:contact_all_r2)
+              ) %>%
+              left_join(
+                df_6mo1 %>%
+                    select(P_ID, phy_home_r3:contact_all_r3), 
+                      by = c("p_id" = "P_ID")
+              )
+
+## Contacts for all rounds in long form
+## Note that contacts made in all locations and all contacts are separate lines, meaning can't just add all contacts to get to total contact
+## Total contacts for a round is when type == "all" and loc == "all"
+df_contact_long <- df_contact %>%
+                    filter(!is.na(contact_all_r2)) %>%         ## Retain only those that have three rounds
+                    filter(!is.na(contact_all_r3)) %>%         ## Retain only those that have three rounds
+                      pivot_longer(
+                        cols = phy_home_r1:contact_all_r3, 
+                        names_sep = "_",
+                        names_to = c("type", "loc", "round")
+                      ) %>%
+                      
+                      mutate(type = ifelse(type=="contact","all",type))  ## change the "contact" label in type to "all" to encompass both physical and non-physical contact
+
+saveRDS(df_contact_long, "0_RDSdata/1_contact_long_r1r2r3.RDS")
+
+
+## Hard code changes to column names to incorporate r1
+
+colnames(df_base1)[87:238] <- paste(colnames(df_base1)[87:238],"__r1", sep = "") ## Double underscore so easier to split later for pivot longer if needed
+colnames(df_3mo1)[2:324] <- paste(colnames(df_3mo1)[2:324],"__r2", sep= "")
+colnames(df_6mo1)[2:326] <- paste(colnames(df_6mo1)[2:326], "__r3", sep="")
+
+## Create dataset of behaviors in wide form for the three rounds
+df_behav  <- df_base1 %>% 
+                      select(p_id,vaccine__r1,social_distant__r1:sanitize__r1) %>%  ##select relevant variables
+  
+            left_join(
+              df_3mo1 %>% select(p_id,rcvd_vaccine__r2:vaccine_othbrand__r2,public_trans__r2:facemask__r2) ##select relevant variables
+            ) %>%
+          
+            left_join(
+              df_6mo1 %>% select(P_ID, rcvd_vaccine__r3:vaccine_othbrand__r3, public_trans__r3:facemask__r3),
+              by = c("p_id"="P_ID")
+            )
+
+df_behav <- df_behav %>% 
+            filter(!is.na(rcvd_vaccine__r3)) %>%       #retain only those that have three rounds
+            filter(!is.na(rcvd_vaccine__r2)) %>%       #retain only those that have three rounds
+            mutate(public_trans__r1 = as.numeric(public_trans__r1))   #R1 public transit variable is the wrong class, change to numeric
+             
+saveRDS(df_behav, "0_RDSdata/2_behavior_r1r2r3.RDS")
+
+## Create dataset of survey completion date and month for the three rounds
+
+df_base1 <- df_base1 %>%
+  mutate(month__r1 = format(dt_bl_complete, "%Y-%m"),
+         week__r1 = format(dt_bl_complete, "%Y-%V")) ## weeks are Monday-Sunday
+
+df_3mo1 <- df_3mo1 %>%
+  mutate(month__r2 = format(m3_date_completed__r2, "%Y-%m"),
+         week__r2 = format(m3_date_completed__r2, "%Y-%V"))
+
+df_6mo1 <- df_6mo1 %>%
+  mutate(month__r3 = format(m6_date_completed__r3, "%Y-%m"),
+         week__r3 = format(m6_date_completed__r3, "%Y-%V"))
+
+df_surveydate <- df_base1 %>%
+                  select(p_id, dt_bl_complete, month__r1, week__r1) %>%
+  
+                  left_join(
+                        df_3mo1 %>% select(p_id, m3_date_completed__r2, month__r2, week__r2)) %>%
+  
+                  left_join(
+                        df_6mo1 %>% select(P_ID, m6_date_completed__r3, month__r3, week__r3), by = c("p_id"="P_ID")) %>%
+    
+                  filter(!is.na(month__r2)) %>%
+                  filter(!is.na(month__r3))
+
+saveRDS(df_surveydate, "0_RDSdata/0_surveydates.RDS")
+
+### Dataset for testing and diagnosis stuff over three rounds
+colnames(df_base1)[44:66] <- paste(colnames(df_base1)[44:66], "__r1", sep="")
+
+df_dx <- df_base1 %>%
+          select(p_id, evertest__r1:pos_proximity__r1, pos_ever__r1:pos_now__r1) %>%
+          
+          left_join(
+            df_3mo1 %>% select(p_id, test_m3__r2:pos_proximity__r2, pos_likely__r2:hh_positive__r2)) %>%
+        
+          left_join(
+            df_6mo1 %>% select(P_ID, test_m3__r3:pos_proximity__r3), 
+            by = c("p_id"="P_ID"))
+
+saveRDS(df_dx, "0_RDSdata/2_diagnosis_r1r2r3.RDS")
+
+### Dataset for symptoms over three rounds
+df_symptoms <- df_base1 %>%
+                  select(p_id, flu__r1:sx_taste_30sev__r1) %>%
+                
+               left_join(
+                 df_3mo1 %>% select(p_id, flu__r2:sx_none_m3__r2)) %>%
+  
+               left_join(
+                 df_6mo1 %>% select(P_ID, flu__r3:sx_none_m3__r3),
+                 by = c("p_id" = "P_ID"))
+
+saveRDS(df_symptoms, "0_RDSdata/2_symptoms_r1r2r3.RDS")
+
+### Read out and save the "analytical" and original daatasets into the same folder for organization
+saveRDS(df_base, "0_RDSdata/99_r1_analytical.RDS")
+saveRDS(df_3mo, "0_RDSdata/99_r2_analytical.RDS")
+saveRDS(df_6mo, "0_RDSdata/99_r3_analytical.RDS")
+saveRDS(df_base1, "0_RDSdata/99_r1_data.RDS")
+saveRDS(df_3mo1, "0_RDSdata/99_r2_data.RDS")
+saveRDS(df_6mo1, "0_RDSdata/99_r3_data.RDS")
+
+
+### Question on vaccine at round 2?
+df_3mo1 <- df_3mo1 %>%
+            mutate(d1_month = format(df_3mo1$vaccine_dose1_dt, "%Y-%m"),
+                   d2_month = format(df_3mo1$vaccine_dose2_dt, "%Y-%m"))
+#df_3mo1 <- df_3mo1 %>%
+#            left_join(df_base) 
+
+#df_3mo1 %>% filter(vaccine_dose1_dt >= as.Date("2020-12-01")) %>%
+#          mutate(d1_month = ifelse(is.na(d1_month),"None",d1_month))%>%
+#          group_by(age_cat2, d1_month) %>%
+#          summarise(n=n()) %>%
+#          pivot_wider(names_from="d1_month", values_from = "n")

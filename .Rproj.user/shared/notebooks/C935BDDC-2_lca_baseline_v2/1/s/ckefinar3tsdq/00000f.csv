@@ -1,0 +1,7 @@
+"0","df_base <- readRDS(""0_RDSdata/0_baseline_characteristics.RDS"") #Wide version baseline characteristics"
+"0","df_behav <- readRDS(""0_RDSdata/2_behavior_r1r2r3r4.RDS"") #Wide version of behavior info r1-r4"
+"0","df_contact_long <- readRDS(""0_RDSdata/1_contact_long_r1r2r3r4.RDS"") #Long version of all contact at each location r1-r4"
+"0","df_cont_all_long <- df_contact_long %>% "
+"0","                    filter(type == ""all"") %>%"
+"0","                    mutate(value = ifelse(value>100,100,value)) ### Made all those with greater than 100 into 100, essentially right censored?"
+"0","df_cont_all_long_r1 <- df_cont_all_long %>% filter(round==""r1"")"

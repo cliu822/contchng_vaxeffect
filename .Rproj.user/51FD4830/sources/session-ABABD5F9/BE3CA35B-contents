@@ -1,0 +1,655 @@
+---
+title: "1_Descriptive_r1r4_v2"
+output: html_document
+date: "2023-05-31"
+---
+
+# Summary
+Below explores contact trajectory over different rounds of COVIDVU survey. (Round 1 = Aug-Dec, 2020; Round 2 = Mar-April, 2021; Round 3 = July-Aug, 2021).The sample size for people who competed all three rounds is 2609. We also do a deeper dive on whether or not we have sufficient datato answer the question "Did vaccination change contact rate?"
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, message = F, warning = F)
+```
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(scales)
+library(purrr)
+library(viridis)
+library(flextable)
+library(RColorBrewer)
+library(lcmm)
+library(lme4)
+#library(ggsankey)
+
+df_contact_long <- readRDS("0_RDSdata/1_contact_long_r1r2r3r4.RDS") #Long version of all contact at each location r1-r4
+df_behav <- readRDS("0_RDSdata/2_behavior_r1r2r3r4.RDS") #Wide version of behavior info r1-r4
+df_surv_dt <- readRDS("0_RDSdata/0_surveydates_r1r2r3r4.RDS") #Wide version survey dates
+df_base <- readRDS("0_RDSdata/0_baseline_characteristics.RDS") #Wide version baseline characteristics
+
+df_base_an <- readRDS("0_RDSdata/99_r1_analytical.RDS") #Wide version baseline with imputation
+df_hh_enum <- readRDS("0_RDSdata/0_hh_enum.RDS") #Wide version hh enumeration
+
+df_class <- readRDS("0_RDSdata/0_lca_class.RDS")
+```
+
+
+
+```{r}
+## Additional data cleaning stuff for covaraites/baseline characteristics
+df_base <- df_base %>% 
+            mutate(pol_cat = ifelse(is.na(pol_cat),"unk",pol_cat))
+
+df_base <- df_base %>%
+                left_join(df_base_an %>% select(p_id, GENDER_I, RACE_ETHNICITY_I)) %>%
+                left_join(df_hh_enum %>% select(p_id, hh_num)) %>%
+  
+            mutate(GENDER_I = case_when(
+                               GENDER_I ==1 ~"Male",
+                               GENDER_I ==2 ~ "Female"),
+                    RACE_ETHNICITY_I = case_when(
+                               RACE_ETHNICITY_I == 1 ~ "1_Hisp",
+                               RACE_ETHNICITY_I == 2 ~ "2_NH-White",
+                               RACE_ETHNICITY_I == 3 ~ "3_NH-Black",
+                               RACE_ETHNICITY_I == 4 ~ "4_NH-Asian",
+                               RACE_ETHNICITY_I == 5 ~ "5_NH-Other"
+                       ),
+                     hh_cat = case_when(
+                               hh_num==1 ~ "1",
+                               hh_num<=4 ~"2-4",
+                               hh_num >4 ~"5+"
+                     ),
+                     comorb_cat = case_when(
+                                comorb_cat == 1 ~"Y",
+                                comorb_cat == 0 ~ "N"
+                     ))
+
+##Right truncating the max number of contacts and filter to the sum of contacts in all locations
+df_cont_all_long <- df_contact_long %>% 
+                    filter(type == "all") %>%
+                    mutate(value = ifelse(value>100,100,value)) ### Made all those with greater than 100 into 100, essentially right censored?
+
+df_cont_work_long <- df_contact_long%>%
+                      filter(loc=="work")%>%
+                        mutate(value = ifelse(value>100,100,value))%>%
+                      group_by(p_id, round)%>%
+                      summarise(value = sum(value))
+
+df_cont_oth_long <- df_contact_long%>%
+                      filter(loc=="other")%>%
+                        mutate(value = ifelse(value>100,100,value))%>%
+                      group_by(p_id, round)%>%
+                      summarise(value = sum(value))
+
+```
+            
+## Aim 2 R1-R2
+```{r}
+## categorize vax status of 2403 participants based on change between R1 and R2, R2  and R3, R3 and R4
+
+vaxcat <- df_behav%>%
+  
+      select(p_id,rcvd_vaccine__r2,vaccine_dose1_dt__r2,vaccine_dose2_dt__r2,
+                  rcvd_vaccine__r3,vaccine_dose1_dt__r3,vaccine_dose2_dt__r3,
+                  rcvd_vaccine__r4,vaccine_recent_dt__r4)%>%
+  
+
+      left_join(df_surv_dt %>%select(p_id,dt_bl_complete, m3_date_completed__r2, m6_date_completed__r3,  m18_dt_complete__r4))%>%
+      
+       mutate(vax_cat_r2 = case_when(
+                              rcvd_vaccine__r2 == 0 ~ "a0_unvax",  ##If unvaxed at end period
+                              rcvd_vaccine__r2 ==1  ~"a1_first_new", ## If first dose in period
+                              rcvd_vaccine__r2 ==2 ~ "a2_both_new"),  ##If one and two dose in period
+  
+              vax_cat_r3 = case_when(
+                              rcvd_vaccine__r2 ==2 ~ "a3_full_vax",
+                              rcvd_vaccine__r3 == 0 ~ "a0_unvax",
+                              rcvd_vaccine__r3 ==1  ~"a1_first_new",
+                              rcvd_vaccine__r3 ==2 & vaccine_dose1_dt__r3<= m3_date_completed__r2~ "a2_second_new",
+                              rcvd_vaccine__r3 ==2 ~"a2_both_new"),
+              
+             vax_cat_r4 = case_when(
+                              rcvd_vaccine__r2 ==2 ~"a3_full_vax",
+                              rcvd_vaccine__r3 ==2 ~ "a3_full_vax",
+                              rcvd_vaccine__r4 == 0 ~ "a0_unvax",
+                              rcvd_vaccine__r4 ==1  ~"a1_first_new",
+                              rcvd_vaccine__r4 ==2 & rcvd_vaccine__r3==1~ "a2_second_new",
+                              rcvd_vaccine__r4 ==2|rcvd_vaccine__r4==3 ~"a2_both_new",
+                              rcvd_vaccine__r4==4 ~"a3_full_vax"))
+              
+```
+
+### Calculating change in contact for all, work and other contacts
+```{r}
+df_cont_all <- df_cont_all_long%>%
+  filter(loc=="all"& type=="all")%>%
+  select(-type, -loc)%>%
+  pivot_wider(names_from = "round",names_prefix = "all_cont_", values_from = "value")
+
+df_cont_work <- df_cont_work_long%>%
+  pivot_wider(names_from = "round", names_prefix="work_cont_", values_from = "value")
+
+df_cont_oth <- df_cont_oth_long%>%
+  pivot_wider(names_from = "round", names_prefix="oth_cont_", values_from = "value")
+  
+##change in contacts
+df_cont_all <- df_cont_all %>%
+                  mutate(r1r2_all_chng = all_cont_r2-all_cont_r1,
+                         r2r3_all_chng = all_cont_r3-all_cont_r2,
+                         r3r4_all_chng = all_cont_r4-all_cont_r3)
+
+df_cont_work<-df_cont_work %>%
+                  mutate(r1r2_wk_chng = work_cont_r2-work_cont_r1,
+                         r2r3_wk_chng = work_cont_r3-work_cont_r2,
+                         r3r4_wk_chng = work_cont_r4-work_cont_r3)
+
+df_cont_oth <- df_cont_oth%>%
+                mutate(r1r2_oth_chng = oth_cont_r2-oth_cont_r1,
+                       r2r3_oth_chng = oth_cont_r3-oth_cont_r2,
+                       r3r4_oth_chng = oth_cont_r4-oth_cont_r3)
+
+```
+
+##Combine vax status, baseline characteristics and contact into wide form?
+```{r}
+comb <- vaxcat%>%
+
+  left_join(df_base %>% select(p_id, age_cat1, age_cat2,pol_cat,emp_cat, comorb_cat)) %>%
+  left_join(df_base_an %>% select(p_id, GENDER_I, RACE_ETHNICITY_I)) %>%
+  left_join(df_hh_enum %>% select(p_id, hh_num))%>%
+
+  mutate(hh_num_cat = case_when(
+                hh_num ==1 ~ "1",
+                hh_num <5 ~"2-4",
+                hh_num >=5 ~ "5+"
+  ),
+         gender_i = ifelse(GENDER_I==1, "Male","Female"),
+        
+          race_eth_i = case_when(
+                               RACE_ETHNICITY_I == 1 ~ "1_Hisp",
+                               RACE_ETHNICITY_I == 2 ~ "2_NH-White",
+                               RACE_ETHNICITY_I == 3 ~ "3_NH-Black",
+                               RACE_ETHNICITY_I == 4 ~ "4_NH-Asian",
+                               RACE_ETHNICITY_I == 5 ~ "5_NH-Other"
+                       ),
+                     hh_cat = case_when(
+                               hh_num==1 ~ "1",
+                               hh_num<=4 ~"2-4",
+                               hh_num >4 ~"5+"
+                     ))%>%
+  
+  select(-GENDER_I,-RACE_ETHNICITY_I, -hh_num)
+```
+
+### Combine vax exposure and baseline characteristics
+```{r}
+##Long form of vax
+vax_long <- vaxcat%>%
+                select(p_id, vax_cat_r2:vax_cat_r4)%>%
+                pivot_longer(vax_cat_r2:vax_cat_r4, names_to ="vax_round", values_to="vax_cat")%>%
+                mutate(round = case_when(
+                      vax_round == "vax_cat_r2"~"r2",
+                      vax_round == "vax_cat_r3"~"r3",
+                      vax_round == "vax_cat_r4"~"r4"
+                ))%>%
+
+  left_join(df_base %>% select(p_id, age_cat1, age_cat2,pol_cat,emp_cat, comorb_cat)) %>%
+  left_join(df_base_an %>% select(p_id, GENDER_I, RACE_ETHNICITY_I)) %>%
+  left_join(df_hh_enum %>% select(p_id, hh_num))%>%
+
+  mutate(hh_num_cat = case_when(
+                hh_num ==1 ~ "1",
+                hh_num <5 ~"2-4",
+                hh_num >=5 ~ "5+"
+  ),
+         gender_i = ifelse(GENDER_I==1, "Male","Female"),
+        
+          race_eth_i = case_when(
+                               RACE_ETHNICITY_I == 1 ~ "1_Hisp",
+                               RACE_ETHNICITY_I == 2 ~ "2_NH-White",
+                               RACE_ETHNICITY_I == 3 ~ "3_NH-Black",
+                               RACE_ETHNICITY_I == 4 ~ "4_NH-Asian",
+                               RACE_ETHNICITY_I == 5 ~ "5_NH-Other"
+                       ),
+                     hh_cat = case_when(
+                               hh_num==1 ~ "1",
+                               hh_num<=4 ~"2-4",
+                               hh_num >4 ~"5+"
+                     ))%>%
+  
+  select(-GENDER_I,-RACE_ETHNICITY_I, -hh_num)
+
+```
+
+```{r}
+
+## Long form of contacg change
+cont_chng_long <- df_cont_all%>%select(p_id, r1r2_all_chng:r3r4_all_chng)%>%
+          pivot_longer(cols = c(r1r2_all_chng,r2r3_all_chng,r3r4_all_chng), names_to="var",values_to="cont_chng")%>%
+          mutate(round = case_when(
+                      var == "r1r2_all_chng"~"r2",
+                      var == "r2r3_all_chng"~"r3",
+                      var == "r3r4_all_chng"~"r4"
+                ))%>%select(-var)
+
+cont_chng_long_wk <- df_cont_work%>%select(p_id, r1r2_wk_chng:r3r4_wk_chng)%>%
+          pivot_longer(cols = c(r1r2_wk_chng,r2r3_wk_chng,r3r4_wk_chng), names_to="var",values_to="cont_chng")%>%
+          mutate(round = case_when(
+                      var == "r1r2_wk_chng"~"r2",
+                      var == "r2r3_wk_chng"~"r3",
+                      var == "r3r4_wk_chng"~"r4"
+                ))%>%select(-var)
+
+cont_chng_long_oth <- df_cont_oth%>%select(p_id, r1r2_oth_chng:r3r4_oth_chng)%>%
+          pivot_longer(cols = c(r1r2_oth_chng,r2r3_oth_chng,r3r4_oth_chng), names_to="var",values_to="cont_chng")%>%
+          mutate(round = case_when(
+                      var == "r1r2_oth_chng"~"r2",
+                      var == "r2r3_oth_chng"~"r3",
+                      var == "r3r4_oth_chng"~"r4"
+                ))%>%select(-var)
+
+vax_cont_long<- vax_long%>%
+  select(-vax_round)%>%
+  left_join(df_cont_all_long, by = c("p_id"="p_id","round"="round"))%>%
+  left_join(cont_chng_long, by = c("p_id"="p_id","round"="round"))
+
+vax_cont_long_wk<- vax_long%>%
+  select(-vax_round)%>%
+  left_join(df_cont_work_long, by = c("p_id"="p_id","round"="round"))%>%
+  left_join(cont_chng_long_wk, by = c("p_id"="p_id","round"="round"))
+
+vax_cont_long_oth<- vax_long%>%
+  select(-vax_round)%>%
+  left_join(df_cont_oth_long, by = c("p_id"="p_id","round"="round"))%>%
+  left_join(cont_chng_long_oth, by = c("p_id"="p_id","round"="round"))
+
+
+```
+
+```{r}
+vax_cont_long_oth%>%
+  group_by(vax_cat,round)%>%
+  summarise(mean_chng = mean(cont_chng),
+            mean_cont = mean(value))%>%
+  pivot_wider(names_from = round, values_from = c(mean_chng, mean_cont))
+
+vax_cont_long%>%
+  group_by(vax_cat,round)%>%
+  summarise(mean_chng = mean(cont_chng),
+            mean_cont = mean(value))%>%
+  pivot_wider(names_from = round, values_from = c(mean_chng, mean_cont))
+```
+
+
+##Join in baseline characteristics
+```{r}
+vax_cont_long <- vax_cont_long%>%
+  left_join(df_cont_all%>%select(p_id, all_cont_r1, all_cont_r4))
+
+vax_cont_long_wk<- vax_cont_long_wk%>%
+  left_join(df_cont_work%>%select(p_id, work_cont_r1, work_cont_r4))
+
+vax_cont_long_oth<- vax_cont_long_oth%>%
+  left_join(df_cont_oth%>%select(p_id, oth_cont_r1, oth_cont_r4))
+
+saveRDS(vax_cont_long, "0_RDSdata/3_vax_cont_long.RDS")
+saveRDS(vax_cont_long_wk, "0_RDSdata/3_vax_cont_long_wk.RDS")
+saveRDS(vax_cont_long_oth, "0_RDSdata/3_vax_cont_long_oth.RDS")
+  
+```
+
+
+```{r}
+vax_cont_long%>%group_by(vax_cat)%>%
+  summarise(mean(all_cont_r1))
+```
+
+
+##Distribution of change over time
+```{r}
+## x-axis is discrete/categorical so density plot makes less sense but maybe slightly easier to visualize the shift in distribution
+vax_cont_long %>%
+  filter(cont_chng>=-44&cont_chng<59)%>%
+  ggplot(aes(x=cont_chng)) +geom_density(position="dodge",alpha=0.3)+
+  scale_fill_viridis(discrete = T)+
+  ggtitle("Distribution of change in contacts")+xlab("Contact change")+
+  theme_bw()+
+  facet_wrap(~round)
+
+quantile(vax_cont_long$cont_chng, probs=c(0.05, 0.975))
+```
+
+
+
+
+
+## Four vax cat
+```{r}
+vax_cont_long <- vax_cont_long %>% mutate(vax_cat4= ifelse(vax_cat=="a2_both_new"|vax_cat=="a2_second_new","a2_second_new",vax_cat))
+
+vax_cont_long1 <- vax_cont_long %>% filter(round %in% c("r2","r3"))
+m1<- lmer(cont_chng ~ vax_cat4+(1|p_id), data = vax_cont_long)
+summary(m1)
+mod_pars<- lmer(cont_chng ~ vax_cat4+round+(1|p_id), data = vax_cont_long)
+summary(mod_pars)
+```
+
+## PLay with lcmm model
+```{r}
+df_cont_all_long <- df_cont_all_long %>% mutate(
+                    round_num = gsub("r","",round)
+)
+# set the seed for random number generator, so results can be
+# reproduced:
+set.seed(2002)
+# run models with 1-4 classes, each with 100 random starts,
+# using the 1-class model to set initial start values:
+lcga1 <- hlme(value ~ round_num, subject = "p_id", ng = 1, data = df_cont_all_long)
+lcga2 <- gridsearch(rep = 100, maxiter = 10, minit = lcga1,
+m=hlme(value ~ round_num, subject = "p_id",
+ ng = 2, data = df_cont_all_long, mixture = ~ round_num))
+lcga3 <- gridsearch(rep = 100, maxiter = 10, minit = lcga1,
+ m=hlme(value ~ round_num, subject = "p_id",
+ ng = 3, data = df_cont_all_long, mixture = ~ round_num))
+# make table with results for the 3 models:
+summarytable(lcga1, lcga2, lcga3)
+
+summary(lcga3)
+```
+
+### Combine exposures and contact outcome
+```{r}
+comb_vax_long <- comb%>%pivot_longer(vax_cat_r2:vax_cat_r4, names_to ="vax_round", values_to="vax_cat")%>%
+                mutate(round = case_when(
+                      vax_round == "vax_cat_r2"~"r2",
+                      vax_round == "vax_cat_r3"~"r3",
+                      vax_round == "vax_cat_r4"~"r4"
+                ))
+                  
+comb_cont_long <- cont_long_r1r2%>%
+        left_join(cont_long_r2r3%>%select(-all_cont_r2))%>%
+        left_join(cont_long_r3r4%>%select(-all_cont_r3))
+
+comb_cont_chng <- comb_cont_long%>%
+        select(-all_cont_r1,-all_cont_r2,-all_cont_r3,-all_cont_r4)%>%
+        pivot_longer(cols = c(r1r2_all_chng,r2r3_all_chng,r3r4_all_chng), names_to="var",values_to="cont_chng")%>%
+        mutate(round = case_when(
+                      var == "r1r2_all_chng"~"r2",
+                      var == "r2r3_all_chng"~"r3",
+                      var == "r3r4_all_chng"~"r4"
+                ))
+
+comb_cont <- comb_cont_long %>%
+        select(p_id, all_cont_r1, all_cont_r2, all_cont_r3, all_cont_r4)%>%
+        pivot_longer(cols =all_cont_r1:all_cont_r4, names_to = "var", values_to="cont_all")%>%
+        mutate(round = case_when(
+                      var == "all_cont_r1"~"r1",
+                      var == "all_cont_r2"~"r2",
+                      var == "all_cont_r3"~"r3",
+                      var == "all_cont_r4"~"r4"
+                ))
+
+comb_vax_long%>%
+  left_join(comb_cont_chng, by = c("p_id"="p_id","round"="round"))%>%
+  left_join(comb_cont%>%filter(round!="r1"), by = c("p_id"="p_id","round"="round"))%>%
+  group_by(vax_cat,round)%>%
+  summarise(mean_chng = mean(cont_chng),
+            mean_cont = mean(cont_all))%>%
+  pivot_wider(names_from = round, values_from = c(mean_chng, mean_cont))
+```
+
+
+
+## Joining vax stat each round by contact each round?
+```{r}
+r1r2 %>%left_join(cont_long_r1r2)%>%
+  group_by(vax_cat_r2)%>%
+  summarise(med_all_chng= median(r1r2_all_chng),
+            mean_all_chng= mean(r1r2_all_chng),
+            mean_r1 = mean(all_cont_r1),
+            mean_r2 =mean(all_cont_r2),
+            med_r1 = median(all_cont_r1),
+            n=n())
+
+r2r3 %>%left_join(cont_long_r2r3)%>%
+  group_by(vax_cat_r3)%>%
+  summarise(med_all_chng= median(r2r3_all_chng),
+            mean_all_chng= mean(r2r3_all_chng),
+            mean_r2 = mean(all_cont_r2),
+            mean_r3 =mean(all_cont_r3),
+            med_r1 = median(all_cont_r2),
+            n=n())
+
+
+
+r3r4 %>%left_join(cont_long_r3r4)%>%
+  group_by(vax_cat_r4)%>%
+  summarise(med_all_chng= median(r3r4_all_chng),
+            mean_all_chng= mean(r3r4_all_chng),
+            mean_r3 = mean(all_cont_r3),
+            mean_r4 =mean(all_cont_r4),
+            med_r1 = median(all_cont_r3),
+            n=n())
+```
+
+## Change in vax category over time - overall and facet wrapped by covariate
+```{r}
+comb <- r1r2 %>%select(p_id, vax_cat_r2)%>%
+  left_join(r2r3%>%select(p_id,vax_cat_r3))%>%
+  left_join(r3r4%>%select(p_id,vax_cat_r4))%>%
+
+  left_join(df_base %>% select(p_id, age_cat1, age_cat2,pol_cat,emp_cat, comorb_cat)) %>%
+  left_join(df_base_an %>% select(p_id, GENDER_I, RACE_ETHNICITY_I)) %>%
+  left_join(df_hh_enum %>% select(p_id, hh_num))%>%
+
+  mutate(hh_num_cat = case_when(
+                hh_num ==1 ~ "1",
+                hh_num <5 ~"2-4",
+                hh_num >=5 ~ "5+"
+  ),
+         gender_i = ifelse(GENDER_I==1, "Male","Female"),
+        
+          race_eth_i = case_when(
+                               RACE_ETHNICITY_I == 1 ~ "1_Hisp",
+                               RACE_ETHNICITY_I == 2 ~ "2_NH-White",
+                               RACE_ETHNICITY_I == 3 ~ "3_NH-Black",
+                               RACE_ETHNICITY_I == 4 ~ "4_NH-Asian",
+                               RACE_ETHNICITY_I == 5 ~ "5_NH-Other"
+                       ),
+                     hh_cat = case_when(
+                               hh_num==1 ~ "1",
+                               hh_num<=4 ~"2-4",
+                               hh_num >4 ~"5+"
+                     ))%>%
+  
+  
+  select(-GENDER_I,-RACE_ETHNICITY_I, -hh_num)
+  
+p3 <- comb%>%
+  pivot_longer(cols = vax_cat_r2:vax_cat_r4, names_to = "round", values_to = "var")%>%
+  group_by(round,var)%>%
+  summarise(n=n())%>%
+  mutate(period = case_when(
+    round=="vax_cat_r2"~"Change in vax R1-R2",
+    round=="vax_cat_r3"~"Change in vax R2-R3",
+    round=="vax_cat_r4"~"Change in vax R3-R4"
+  ),
+         vax_status = case_when(
+    var=="a0_unvax"~"Remain unvax",
+    var=="a1_first_new"~"New first dose",
+    var=="a2_both_new" ~"New both dose",
+    var=="a2_second_new"~"New second dose",
+    var=="a3_full_vax"~"Already fully vaxed"
+      
+         ))%>%
+  ggplot(aes(x=period, y=n, fill=vax_status))+
+  geom_bar(position="stack", stat="identity")+
+  scale_fill_manual(values = c("#A1D99B","#FED976","#FFEDA0","#FFFFCC","#FC9272"))+
+  ggtitle("Distribution of changes in vaccination status between survey rounds")+xlab("")+ylab("No. participants")+
+  theme_classic()
+
+png("0_plot/vaxstat_overtime.png", width=7, height=7, units="in",res=400)
+p3
+dev.off()
+
+##Faceted look at change over time by covariate
+comb <-comb %>%mutate(emp_cat = ifelse(is.na(emp_cat), "unk",emp_cat))
+demo_dist_long <- comb%>%select(-hh_num_cat)%>%select(p_id,age_cat2:race_eth_i,hh_cat)%>%
+                  pivot_longer(cols = age_cat2:race_eth_i, names_to="covar", values_to = "val")%>%
+                  group_by(covar,val)%>%
+                  summarise(tot=n())
+
+
+comb_covar_long<- comb%>%select(-age_cat1, -hh_num_cat)%>%
+  pivot_longer(cols = age_cat2:hh_cat, names_to = "covar", values_to = "val")%>%
+  arrange(covar,val)%>%
+   
+  pivot_longer(cols = vax_cat_r2:vax_cat_r4, names_to = "round", values_to = "var")%>%
+  group_by(covar,val,round,var)%>%
+  summarise(n=n())%>%
+  left_join(demo_dist_long, by = c("covar"="covar", "val"="val"))%>%
+  mutate(prop = n/tot)%>%
+  mutate(period = case_when(
+    round=="vax_cat_r2"~"Change in vax R1-R2",
+    round=="vax_cat_r3"~"Change in vax R2-R3",
+    round=="vax_cat_r4"~"Change in vax R3-R4"
+  ),
+         vax_status = case_when(
+    var=="a0_unvax"~"Remain unvax",
+    var=="a1_first_new"~"New first dose",
+    var=="a2_both_new" ~"New both dose",
+    var=="a2_second_new"~"New second dose",
+    var=="a3_full_vax"~"Already fully vaxed"))
+
+p4a <- comb_covar_long %>% filter(covar == "age_cat2")%>%
+  ggplot(aes(x=period, y=prop, fill=vax_status))+
+  geom_col(position="stack", stat="identity")+
+  scale_fill_manual(values = c("#A1D99B","#FED976","#FFEDA0","#FFFFCC","#FC9272"))+
+  ggtitle("Distribution of changes in vaccination status between survey rounds")+xlab("")+ylab("No. participants")+
+  theme_classic()+facet_wrap(~val, nrow=1)
+
+p4b <- comb_covar_long %>% filter(covar == "comorb_cat")%>%
+  ggplot(aes(x=period, y=prop, fill=vax_status))+
+  geom_col(position="stack", stat="identity")+
+  scale_fill_manual(values = c("#A1D99B","#FED976","#FFEDA0","#FFFFCC","#FC9272"))+
+  ggtitle("Distribution of changes in vaccination status between survey rounds")+xlab("")+ylab("No. participants")+
+  theme_classic()+facet_wrap(~val, nrow=1)
+
+p4c <- comb_covar_long %>% filter(covar == "emp_cat")%>%
+  ggplot(aes(x=period, y=prop, fill=vax_status))+
+  geom_col(position="stack", stat="identity")+
+  scale_fill_manual(values = c("#A1D99B","#FED976","#FFEDA0","#FFFFCC","#FC9272"))+
+  ggtitle("Distribution of changes in vaccination status between survey rounds")+xlab("")+ylab("No. participants")+
+  theme_classic()+facet_wrap(~val, nrow=1)
+
+p4d <- comb_covar_long %>% filter(covar == "pol_cat")%>%
+  ggplot(aes(x=period, y=prop, fill=vax_status))+
+  geom_col(position="stack", stat="identity")+
+  scale_fill_manual(values = c("#A1D99B","#FED976","#FFEDA0","#FFFFCC","#FC9272"))+
+  ggtitle("Distribution of changes in vaccination status between survey rounds")+xlab("")+ylab("No. participants")+
+  theme_classic()+facet_wrap(~val, nrow=1)
+
+p4e <- comb_covar_long %>% filter(covar == "race_eth_i")%>%
+  ggplot(aes(x=period, y=prop, fill=vax_status))+
+  geom_col(position="stack", stat="identity")+
+  scale_fill_manual(values = c("#A1D99B","#FED976","#FFEDA0","#FFFFCC","#FC9272"))+
+  ggtitle("Distribution of changes in vaccination status between survey rounds")+xlab("")+ylab("No. participants")+
+  theme_classic()+facet_wrap(~val, nrow=1)
+
+p4f <- comb_covar_long %>% filter(covar == "gender_i")%>%
+  ggplot(aes(x=period, y=prop, fill=vax_status))+
+  geom_col(position="stack", stat="identity")+
+  scale_fill_manual(values = c("#A1D99B","#FED976","#FFEDA0","#FFFFCC","#FC9272"))+
+  ggtitle("Distribution of changes in vaccination status between survey rounds")+xlab("")+ylab("No. participants")+
+  theme_classic()+facet_wrap(~val, nrow=1)
+
+p4g <- comb_covar_long %>% filter(covar == "hh_cat")%>%
+  ggplot(aes(x=period, y=prop, fill=vax_status))+
+  geom_col(position="stack", stat="identity")+
+  scale_fill_manual(values = c("#A1D99B","#FED976","#FFEDA0","#FFFFCC","#FC9272"))+
+  ggtitle("Distribution of changes in vaccination status between survey rounds")+xlab("")+ylab("No. participants")+
+  theme_classic()+facet_wrap(~val, nrow=1)
+
+png("0_plot/vaxstat_overtime_age.png", width=12, height=3, units="in",res=400)
+p4a
+dev.off()
+
+png("0_plot/vaxstat_overtime_comorb.png", width=6, height=2, units="in",res=400)
+p4b
+dev.off()
+
+png("0_plot/vaxstat_overtime_emp.png", width=10, height=3, units="in",res=400)
+p4c
+dev.off()
+
+png("0_plot/vaxstat_overtime_pol.png", width=10, height=3, units="in",res=400)
+p4d
+dev.off()
+
+png("0_plot/vaxstat_overtime_race.png", width=12, height=3, units="in",res=400)
+p4e
+dev.off()
+
+png("0_plot/vaxstat_overtime_gender.png", width=4, height=2, units="in",res=400)
+p4f
+dev.off()
+
+png("0_plot/vaxstat_overtime_hh_cat.png", width=10, height=3, units="in",res=400)
+p4g
+dev.off()
+
+
+
+```
+
+## Distribution of vaccination status by round
+```{r}
+r1r2_exp_dist <- r1r2 %>% 
+  left_join(df_base %>% select(p_id, age_cat2, GENDER_I, RACE_ETHNICITY_I, hh_cat,emp_cat,pol_cat, comorb_cat )) %>%
+  select(p_id, vax_cat_r2, age_cat2:comorb_cat)%>%
+  pivot_longer(cols=age_cat2:comorb_cat, names_to="var",values_to = "val")%>%
+  group_by(vax_cat_r2, var,val)%>%
+  summarise(n=n())%>%
+  pivot_wider(names_from = "vax_cat_r2", values_from = "n")%>%
+  mutate(tot = a0_unvax+a1_first_new+a2_both_new)%>%
+  mutate(p_unvax = round(a0_unvax/tot, digits=2),
+         p_one = round(a1_first_new/tot,digits=2),
+         p_two = round(a2_both_new/tot, digits=2))
+
+write.csv(r1r2_exp_dist, "r1r2_exp_dist.csv")
+
+r2r3_exp_dist <- r2r3 %>% 
+  left_join(df_base %>% select(p_id, age_cat2, GENDER_I, RACE_ETHNICITY_I, hh_cat,emp_cat,pol_cat, comorb_cat )) %>%
+  select(p_id, vax_cat_r3, age_cat2:comorb_cat)%>%
+  pivot_longer(cols=age_cat2:comorb_cat, names_to="var",values_to = "val")%>%
+  group_by(vax_cat_r3, var,val)%>%
+  summarise(n=n())%>%
+  pivot_wider(names_from = "vax_cat_r3", values_from = "n")%>%
+  mutate(tot = a0_unvax+a1_first_new+a2_second_new+a2_both_new+a3_full_vax)%>%
+  mutate(p_unvax = round(a0_unvax/tot, digits=2),
+         p_one = round(a1_first_new/tot,digits=2),
+         p_two = round(a2_second_new/tot, digits=2),
+         p_both = round(a2_both_new/tot, digits = 2),
+         p_full = round(a3_full_vax/tot, digits=2))
+
+write.csv(r2r3_exp_dist, "r2r3_exp_dist.csv")
+
+r3r4_exp_dist <- r3r4 %>% 
+  left_join(df_base %>% select(p_id, age_cat2, GENDER_I, RACE_ETHNICITY_I, hh_cat,emp_cat,pol_cat, comorb_cat )) %>%
+  select(p_id, vax_cat_r4, age_cat2:comorb_cat)%>%
+  pivot_longer(cols=age_cat2:comorb_cat, names_to="var",values_to = "val")%>%
+  group_by(vax_cat_r4, var,val)%>%
+  summarise(n=n())%>%
+  pivot_wider(names_from = "vax_cat_r4", values_from = "n")%>%
+  mutate(tot = a0_unvax+a1_first_new+a2_second_new+a2_both_new+a3_full_vax)%>%
+  mutate(p_unvax = round(a0_unvax/tot, digits=2),
+         p_one = round(a1_first_new/tot,digits=2),
+         p_two = round(a2_second_new/tot, digits=2),
+         p_both = round(a2_both_new/tot, digits = 2),
+         p_full = round(a3_full_vax/tot, digits=2))
+
+write.csv(r3r4_exp_dist, "r3r4_exp_dist.csv")
+```
+

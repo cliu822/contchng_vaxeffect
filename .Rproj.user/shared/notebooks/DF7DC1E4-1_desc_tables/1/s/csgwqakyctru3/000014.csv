@@ -1,0 +1,9 @@
+"0","vax_cont_long_full <- readRDS(""0_RDSdata/3_vax_cont_long_full.RDS"")%>%arrange(outcome)"
+"0","vax_cont_all99 <- vax_cont_long_full%>%"
+"0","                      mutate(Series_Complete_Pop_Pct = Series_Complete_Pop_Pct/20,"
+"0","                             vax_comm_cat_all = as.factor(vax_comm_cat_all))%>%"
+"0","                      filter(outcome==""val99_all"")"
+"0","                      "
+"0","vax_cont"
+"2","Error: object 'vax_cont' not found
+"

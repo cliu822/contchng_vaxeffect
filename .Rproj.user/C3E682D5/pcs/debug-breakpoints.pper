@@ -1,0 +1,36 @@
+{
+    "debugBreakpointsState": {
+        "breakpoints": [
+            {
+                "id": 0,
+                "path": "~/DIssertation/Aim 1/COVIDVu Data/0_data_processing.R",
+                "line_number": 488,
+                "function_steps": "",
+                "function_name": "toplevel",
+                "state": 1,
+                "editor_state": 1,
+                "editor_line_number": 488,
+                "is_pending_debug_completion": false,
+                "needs_updated_steps": false,
+                "type": 1,
+                "is_package_breakpoint": false,
+                "package_name": ""
+            },
+            {
+                "id": 1,
+                "path": "~/DIssertation/Aim 1/COVIDVu Data/2_mainres_figtab.R",
+                "line_number": 31,
+                "function_steps": "",
+                "function_name": "toplevel",
+                "state": 1,
+                "editor_state": 1,
+                "editor_line_number": 31,
+                "is_pending_debug_completion": false,
+                "needs_updated_steps": false,
+                "type": 1,
+                "is_package_breakpoint": false,
+                "package_name": ""
+            }
+        ]
+    }
+}

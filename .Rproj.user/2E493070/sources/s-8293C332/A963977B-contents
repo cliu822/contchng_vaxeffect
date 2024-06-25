@@ -1,0 +1,272 @@
+packages <- c("data.table","tidyverse","skimr","here","ggthemes","extrafont",
+              "survival","sandwich","lmtest")
+
+for (package in packages) {
+  if (!require(package, character.only=T, quietly=T)) {
+    install.packages(package, repos='http://lib.stat.cmu.edu/R/CRAN')
+  }
+}
+
+for (package in packages) {
+  library(package, character.only=T)
+}
+
+#font_import(pattern = 'Arial')
+
+##Set theme
+thm <- theme_tufte() +
+  theme(
+    text = element_text(size=12),
+    legend.position = "top",
+    legend.background = element_rect(fill = "transparent", colour = NA),
+    legend.key = element_rect(fill = "transparent", colour = NA)
+  )
+theme_set(thm)
+
+## Read in data
+D<-read_csv("example_dat-1.csv")
+# Propensity score
+D$pscore <- glm(X ~ as.factor(int) + Xm1 + Z + Zm1,data=D,family=binomial(link="logit"))$fitted.values
+#Numerator of stabilized weights
+D$p_num <- glm(X ~ as.factor(int),data=D,family=binomial(link="logit"))$fitted.values
+
+D %>% print(n=16)
+
+## Next we create the stabilized and unstabilized weights.
+## First obtain prob of observed exposure
+# In a given time point, if a person is exposed, their numerator 
+D <- D %>% group_by(ID) %>% 
+  mutate(num = X*p_num + (1-X)*(1-p_num),
+         den = X*pscore + (1-X)*(1-pscore),
+         sw = cumprod(num/den),
+         w = cumprod(1/den)) %>% 
+  ungroup(ID)
+
+D %>% select(ID, time, X, pscore, p_num, num, den, sw, w) %>% print(n=16)
+
+## Assessing if positivity assumpton holds
+ggplot(D) + 
+  geom_histogram(aes(pscore)) +
+  xlab("Propensity Score") +
+  ylab("Count")
+
+## Positivity over time
+ggplot(D) + 
+  geom_density(aes(x=pscore,fill=as.factor(X)),alpha=.5,bw=.1) +
+  facet_wrap(~int, labeller=label_both) +
+  xlab("Propensity Score") +
+  ylab("Density") +
+  scale_fill_discrete(name = "Exposure Status", labels = c("Unexposed", "Exposed"))
+
+## Final strategy is to check their distribution, specifically the mean and the max of stabilized weights at each time point
+D %>% group_by(int) %>% summarize(meanSW =mean(sw),
+                                  maxSW =max(sw))
+
+## Overall, distribution of propensity score and weights not suggestive of any positivity concerns
+
+## Next use weights to estimate the effect of interest. To estimate the causal HR, we use cox proportional hazards
+## regression model or a pooled logistic regression model
+
+mod1_cox <- coxph(Surv(time,Y)~X +cluster(ID),data=D,ties="efron", weight=sw)
+summary(mod1_cox)$coefficients
+
+mod1_plr <- glm(Y ~ as.factor(int) + X, data=D, family = quasibinomial(link = "logit"), weights=sw)
+summary(mod1_plr)$coefficients
+coeftest(mod1_plr, vcov = vcovCL(mod1_plr, cluster=D$ID, type = "HC1"))[13,]
+
+##Cluster(ID) and "coeftest"used to get the robust standard error estimator. 
+
+#######################3
+## Lab questions######
+#########################
+new_dat <- D %>% 
+  group_by(ID) %>%                        ##Group by UD
+  mutate(cumexp = cumsum(X),              ##Cumulativesum over all time points before a specific time interval
+         expratio = cumexp/int) %>%       ## ratio of exposed time to total time in study
+  filter(last_flag == 1)                  ## Select last interval of everyone's follow-up
+
+new_dat %>% filter(expratio ==1) %>% select(ID, cumexp, expratio)
+new_dat %>% filter(expratio ==0) %>% select(ID, cumexp, expratio)
+### Q1: We find that 214 participant was exposed during his or her entire follow-up time 
+## and that 368 were unexposed during the entire follow-up time. Given that so few people are 
+## completely exposed and completely unexposed compared to the entire sample size of 5000, 
+##it raises the question of whether or not the estimate generated from these individuals approximates
+## the true estimand for the effect of interest
+
+##Max stabilized weight gets larger over time because the weight at a given time point i is
+## the cumultive product of the stabilized weights at all time points before time i multiplied
+## by the probability of observed exposure divided by prob of propensity score at time i
+##(for a given individual in our dataset).In general, when people are exposed at a given time point, their
+## stabilized weight increases from the previous time point. My thinking is that in general, as more people
+## become exposed and remain exposed over time, their stabilized weight also increases. This is because
+## over all time points, there are fewer exposed time intervals so time intervals that are exposed
+## will have a weight greater than 1.
+
+## Magnitude of association between X and Z in weighted data
+mod2_plr <- glm(X~ as.factor(int) + Z, data = D, family = quasibinomial(link="logit"), weights=sw)
+summary(mod2_plr)$coefficients
+coeftest(mod2_plr, vcov = vcovCL(mod2_plr, cluster=D$ID, type = "HC1"))[13,]
+
+## We use a pooled logistic regression with a quasibinomial with X as the outcome and time interval and Z as covariates
+## And weight by sw.
+##Association between X and Z in the weightd data has coefficients 0.004749 with robust standard error
+## of 0.02512 (this corresponds to an OR of 1.0047)
+
+## magnitude of association between X and Z in unweighted data 
+mod3_plr <- glm(X~ as.factor(int) + Z, data = D, family = quasibinomial(link="logit"))
+summary(mod3_plr)$coefficients
+coeftest(mod3_plr, vcov = vcovCL(mod3_plr, cluster=D$ID, type = "HC1"))[13,]
+
+## Using the same pooled logistic regression but without weights, we find a coefficient of
+## 0.686 with robust standard error of 0.002078. This corresponds to an OR of 1.95
+. 
+#############################
+##G-computation##############
+#############################
+
+## Best approach is to start with a table documenting all relevant variables that need to be modeled
+## Ranked in causal order
+
+### Start with fitting the models we'll need
+D <- D %>% select(ID, int, time, Y, X, Z, Xm1, Zm1, last_flag)
+
+#model for the outcome
+modY <- glm(Y~ as.factor(int)+X+Z+Xm1+Zm1, data = D, family = binomial("logit"))
+
+# Model for exposure
+modX <- glm(X~as.factor(int) + Z+Xm1 + Zm1, data=D, family=binomial("logit"))
+
+# Model for the confounder
+modZ <- glm(Z~as.factor(int) + Xm1 + Zm1, data=D, family=binomial("logit"))
+
+### We cant use the model for the outcome to quantify the effect of X on Y because it includes Z
+## which opens a collider bias path in the DAG. But we can use all three models together to get an 
+## estimate of the average of Y under different scenarios for X
+
+## Take first observation for the first individual in the dataset
+obs <- D[1,]
+
+## we can use modZ, modX, modY to predict the second observation for this first individual:
+dZp <- data.table(Xm1 = obs$X, Zm1 = obs$Z, int=as.factor(2))
+Zp <- as.numeric(predict(modZ, newdata = dZp, type ="response")>runif(1))
+
+dXp <- data.table(Xm1=obs$X, Zm1=obs$Z, Z=Zp, int=as.factor(2))
+Xp <- as.numeric(predict(modX,newdata=dXp,type="response")>runif(1))
+
+dYp <- data.table(Xm1=obs$X, Zm1=obs$Z, Z=Zp, X=Xp, int=as.factor(2))
+Yp <- as.numeric(predict(modZ,newdata=dZp,type="response")>runif(1))
+
+rbind(obs,data.frame(ID=1, int=2, time=2, Y=Yp, X=Xp, Z=Zp, Xm1=obs$X, Zm1=obs$Z, last_flag=0))
+
+## Note that all the relevant variables in the second time-point were obtained from model predictions.
+## Using these models predictions, we could continue the process until we reached the end of follow-up 
+##(time point 12 in our case), or until the event occurred (Y=1). While it may not be clear yet, this 
+## procedure is the core of g computation.
+
+## Build bigger working example of gcomp
+set.seed(123)
+
+dat <- D %>% filter(int==1) 
+dat$id <- 1:nrow(dat)
+
+pgf<-function(ii, mc_data, lngth, exposure = NULL){
+  d <- mc_data
+  d <- d[d$id==ii,]
+  
+  lngth <- lngth
+  Zp <- Xp <- Yp <- mm <- numeric() 
+  mm[1] <- j <- 1
+  id <- d$id
+  
+  Zp <- d$Z
+  
+  if (is.null(exposure)) {
+    Xp[1] <- d$X
+  } else{
+    Xp[1] <- exposure
+  }
+  
+  Yp[1] <- d$Y
+  
+  for (j in 2:lngth) {
+    #cat("Iteration",j,"for observation",ii,"from Monte Carlo Data",'\n')
+    if (Yp[j - 1]==0) {
+      Xl=Xp[j-1];Zl=Zp[j-1]
+      
+      #cat("Generating Z",'\n')
+      dZp <- data.table(Xm1=Xl, Zm1=Zl,int=as.factor(j))
+      Zp[j] <- as.numeric(predict(modZ,newdata=dZp,type="response")>runif(1))
+      
+      #cat("Generating X",'\n')
+      dXp <- data.table(Z=Zp[j], Zm1=Zl, Xm1=Xp[j-1], int=as.factor(j))
+      if (is.null(exposure)) {
+        Xp[j] <- as.numeric(predict(modX,newdata=dXp,type="response")>runif(1))
+      } else{
+        Xp[j] <- exposure
+      }
+      
+      #cat("Generating Y",'\n')
+      dYp <- data.table(X=Xp[j], Z=Zp[j], Xm1=Xp[j-1], Zm1=Zl, int=as.factor(j))
+      Yp[j] <- as.numeric(predict(modY,newdata=dYp,type="response")>runif(1))
+      
+    } else {
+      break
+    }
+    mm[j] <- j
+  }
+  gdat <- data.table(id,mm,Zp,Xp,Yp)
+  gdat$last<-as.numeric(!(gdat$Yp==0)|gdat$mm==lngth)
+  return(gdat)
+}
+
+gComp_dat <- lapply(1:nrow(dat), function(x) pgf(x, mc_data=dat, lngth=12, exposure = NULL))
+gComp_dat <- do.call(rbind,gComp_dat)
+
+head(gComp_dat,20)
+
+## compare summary statistics from the gComp_dat with the original data
+D %>% filter(last_flag==1) %>% summarize(meanY=mean(Y))
+
+gComp_dat %>% filter(last==1) %>% summarize(meanY=mean(Yp))
+
+fitD <- coxph(Surv(int,Y)~1, data=D)
+expfitD <- survfit(fitD)
+plot_dat0 <- data.frame(cum_prob=1-expfitD$surv, time=expfitD$time, Scenario="Original Data")
+
+fitG <- coxph(Surv(mm, Yp) ~ 1, data = gComp_dat)
+expfitG <- survfit(fitG)
+
+plot_dat1 <- data.frame(cum_prob=1-expfitG$surv, time=expfitG$time, Scenario="Natural Course")
+
+plot_dat <- rbind(plot_dat0,plot_dat1)
+
+ggplot(plot_dat) + geom_step(aes(x=time,y=cum_prob,group=Scenario,color=Scenario))
+
+##This step is for validation, we see that in the above figure, the natural course comparison between
+## G comp and what we observe in the data is similar
+
+## Now lets use g comp to estimate the effect we're interested in
+## Do this by setting exposure value to 1 and then to 0, instead of predicting exposure value from exposure model
+
+set.seed(123)
+
+gComp_dat0 <- lapply(1:nrow(dat), function(x) pgf(x,mc_data = dat, lngth =12, exposure = 0))
+gComp_dat0 <- do.call(rbind, gComp_dat0)
+
+head(gComp_dat0,20)
+
+gComp_dat1 <- lapply(1:nrow(dat), function(x) pgf(x, mc_data=dat, lngth=12, exposure = 1))
+gComp_dat1 <- do.call(rbind,gComp_dat1)
+
+head(gComp_dat1,20)
+
+## Estimate hte HR by combining gComp_dat0 and gComp_dat1 into a single dataset with exposure value
+
+gComp_dat01 <- rbind(gComp_dat0,gComp_dat1) %>% filter(last==1)
+
+gComp_dat01
+
+
+cox_gComp <- coxph(Surv(mm,Yp) ~ Xp, data=gComp_dat01, ties="efron")
+
+summary(cox_gComp)$coefficients

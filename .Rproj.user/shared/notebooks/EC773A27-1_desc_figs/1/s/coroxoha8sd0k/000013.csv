@@ -1,0 +1,8 @@
+"0","p1 <- ggarrange(p[[1]],p[[2]],p[[3]],p[[4]],p[[5]],p[[6]],ncol=2,nrow=3)"
+"0","p1<- annotate_figure(p1,bottom=text_grob(""Round"",size=14),"
+"0","                     left=text_grob(""Mean contact"",rot = 90,size=14),"
+"0","                     top = text_grob("" A. Mean contact by subgroup and round"", size=16, just=""right"", hjust=0.9))"
+"0",""
+"0","p2 <- plot_grid(p1b,p1c, ncol=1,align=""v"")"
+"2","Error in seq.default(min, max, by = by) : 'from' must be a finite number
+"

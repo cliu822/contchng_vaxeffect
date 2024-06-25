@@ -1,0 +1,5 @@
+"0","df_behav_long <- df_behav%>%select(socdist_cat__r1,travess_cat__r1,travnoness_cat__r1,maskcat__r1,vaxcat__r1,transcat__r1)%>%"
+"0","  pivot_longer(cols=socdist_cat__r1:transcat__r1, names_to=""var"", values_to=""val"")"
+"2","Error in select(., socdist_cat__r1, travess_cat__r1, travnoness_cat__r1,  : 
+  unused arguments (socdist_cat__r1, travess_cat__r1, travnoness_cat__r1, maskcat__r1, vaxcat__r1, transcat__r1)
+"

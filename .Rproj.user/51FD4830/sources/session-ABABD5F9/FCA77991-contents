@@ -1,0 +1,130 @@
+library("dplyr")
+library("ggplot2")
+library("RColorBrewer")
+
+## First part calculates hypothetical changes in relative transmission sweeping across a range of contacts in vaxed, unvaxed and VEs
+r0_init =3
+cont_pre=16
+cont_vv =0
+cont_vu = 9.2
+cont_uv = 0
+cont_uu =11.5
+ve_s = 0 
+getr0<- function(x){
+     r0_init = x["r0_init"]
+     cont_pre =x["cont_pre"]
+  
+     #r0_init=3
+     #cont_pre=16
+     cont_pre_red = 5.333
+     dur = 7
+     beta_orig = r0_init/cont_pre/7
+     
+     cont_vv = x["cont_vv"]
+     cont_vu = x["cont_vu"]
+     cont_uv =x["cont_uv"]
+     cont_uu =x["cont_uu"]
+     
+     ve_s = x["ve_s"]
+     ve_i = x["ve_i"]
+      
+     df99 <- data.frame(inf = c("inf_v","inf_v","inf_u","inf_u"),
+                sus = c("sus_v", "sus_u", "sus_v", "sus_u"),
+                cont = c(cont_vv, cont_vu, cont_uv, cont_uu)) %>%
+      mutate(beta = c(beta_orig*(1-ve_s), beta_orig, 
+                       beta_orig*(1-ve_s),beta_orig),
+
+             R = cont*beta*dur)
+     
+    mat<- matrix(df99$R, nrow=2, ncol=2)
+    
+    max(eigen(mat)$values)
+ }
+  
+
+
+df<- expand.grid(cont_vv=seq(from=1.5, to=20, by =0.5), cont_uv = seq(from = 1.5, to=20, by=0.5),ve_s= seq(from=0, to=0.95, by =0.05))
+df <- df %>% mutate(
+              r0_init =3, 
+              cont_pre = 16,
+              cont_vu=cont_vv,
+              cont_uu = cont_uv,
+              ve_i=0
+)
+
+df$r0 <- apply(df[1:10,],1,getr0)
+
+df<- df%>%
+        mutate(r0_rel = r0/3)
+
+saveRDS(df, "0_RDSdata/4_r0_vary.RDS")
+df <- readRDS("0_RDSdata/4_r0_vary.RDS")
+
+pal <- c("#A50026","#D73027", "#F46D43","#FDAE61","#FEE090","#FFFFBF","#E0F3F8","#ABD9E9","#74ADD1","#4575B4","#313695")
+survey_cont <- data.frame(cont_v = c(9.2,11.6,14.9),
+                          cont_u = c(11.5,15.6,17.3),
+                          round = c("round2","round3","round4"))
+
+df <- df%>%
+  mutate(cont_v = cont_vv+cont_vu,
+         cont_u = cont_uu+cont_uv)%>%
+  filter(ve_s %in% c(0,0.25,0.5,0.75,0.95))%>%
+  mutate(ve_lab = paste("VE - ",ve_s*100,"%", sep=""))
+
+  ggplot()+
+  geom_raster(data=df,aes(x=cont_v, y=cont_u,z=r0_rel,fill=r0_rel),alpha=0.8)+
+  scale_fill_gradientn(breaks=c(0,0.5,1,1.5,2,2.5),colours=rev(pal))+
+  geom_point(data=survey_cont, aes(x=cont_v,y=cont_u,label=round),shape=18,size=4)+
+  geom_text(data=survey_cont,aes(x=cont_v,y=cont_u,label=round), nudge_y = -1.3, nudge_x = 2)+
+  facet_wrap(~ve_lab,nrow=1)+theme_classic()+
+  xlab("Contacts per person per day among vaccinated")+ylab("Contacts per person per day among unvaccinated")
+
+  
+##Second part calculates changes in R0 given estimated contact rates in vaxed and uvaxed and a range of VEs
+df1 <- expand.grid(ve_s=seq(from=0, to=0.95, by=0.05),
+                   round = c("round2","round3","round4"),
+                   cov= seq(from=0, to=0.8, by=0.1))
+
+df1 <- df1 %>%
+        left_join(survey_cont)%>%
+        mutate(cont_vv = cont_v*cov,
+               cont_vu = cont_v*(1-cov),
+               cont_uv = cont_u*cov,
+               cont_uu =cont_u*(1-cov),
+               r0_init =3, 
+               cont_pre = 16,
+               ve_i=0)
+
+df_add <- df1%>%select(cont_v,cont_u,round,cov)
+df1 <- df1%>%select(-cont_v,-cont_u,-round,-cov)
+
+df1$r0 <- apply(df1,1,getr0)
+
+df1 <-cbind(df1,df_add)
+
+
+saveRDS(df1, "0_RDSdata/4_r0_ve_vary.RDS")
+
+df1%>%
+  select(ve_s, round, r0,cov)%>%
+  filter(ve_s %in%c(0,0.25,0.5,0.75,0.95))%>%
+  ggplot(aes(x=round, y=r0,color=ve_s, group=ve_s))+
+  geom_point()+
+  geom_line()+
+  facet_wrap(~cov)
+
+  
+df%>%
+  mutate(tot_cont = cont_vv*2+cont_uv*2)%>%
+  group_by(tot_cont, ve_s)%>%
+  summarise(r0=mean(r0))%>%
+  ggplot()+
+  geom_line(aes(x=tot_cont, y=r0, col=as.factor(ve_s)))+
+  xlim(5,40)+ylim(0,4)
+
+df%>%
+  filter(ve_s %in% c(0,0.25,0.5,0.75,0.95))%>%
+  ggplot()+
+  geom_tile(aes(x=cont_vv, y=cont_uu, fill=r0))+
+  scale_fill_continuous_sequential(palette = "Blues")+
+  facet_wrap(~ve_s)+theme_bw()

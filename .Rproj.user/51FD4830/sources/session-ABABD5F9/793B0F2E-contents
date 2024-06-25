@@ -1,0 +1,95 @@
+library(openxlsx)
+library(lme4)
+library(dplyr)
+library(tidyr)
+df_behav <- readRDS("0_RDSdata/2_behavior_r1r2r3r4.RDS") #Wide version of behavior info r1-r4
+df_base <- readRDS("0_RDSdata/0_baseline_characteristics.RDS") #Wide version baseline characteristics
+df_surv_dt <- readRDS("0_RDSdata/0_surveydates_r1r2r3r4.RDS") #Wide version survey dates
+string <- readRDS("0_RDSdata/0_oxford_stringency.RDS")
+df_class <- readRDS("0_RDSdata/0_lca_class.RDS")
+
+##Get state stringency index at time of survey completion
+string_long <- df_surv_dt%>% dplyr::select(p_id, m3_date_completed__r2, m6_date_completed__r3, m18_dt_complete__r4)%>%
+  pivot_longer(cols=m3_date_completed__r2:m18_dt_complete__r4, names_to="var", values_to="date")%>%
+  mutate(round = case_when(
+    var=="m3_date_completed__r2"~"r2",
+    var=="m6_date_completed__r3"~"r3",
+    var=="m18_dt_complete__r4"~"r4"
+  ))%>%
+  left_join(df_base %>%dplyr::select(p_id,state), by = c("p_id"="p_id"))
+
+string_long <- string_long %>% 
+  left_join(string%>%dplyr::select(date, state, StringencyIndex, string_cat),
+            by = c("date"="date","state"="state"))%>%
+  mutate(string_cat = as.factor(string_cat))
+
+behav_long<- df_behav%>%dplyr::select(p_id,variant_worry__r2,variant_worry__r3, variant_worry__r4)%>%
+  pivot_longer(cols=variant_worry__r2:variant_worry__r4,names_to="var",values_to="variant_worry")%>%
+  mutate(round = substr(var,16,17)) %>%
+  mutate(variant_worry = as.factor(variant_worry))
+
+vax_simp_long <- df_behav%>%
+                  select(p_id, rcvd_vaccine__r2, rcvd_vaccine__r3,rcvd_vaccine__r4)%>%
+                  pivot_longer(cols=rcvd_vaccine__r2:rcvd_vaccine__r4, names_to ="vax", values_to="dose")%>%
+                  mutate(round=gsub("rcvd_vaccine__","",vax),
+                         dose=ifelse(dose>=2,2,dose),
+                         dose=as.factor(dose))
+
+vax_cont_long <- readRDS("0_RDSdata/3_vax_cont_long.RDS")%>%
+  left_join(string_long%>%select(p_id, round, StringencyIndex, string_cat), by = c("p_id"="p_id","round"="round"))%>%
+  left_join(behav_long%>%select(p_id,round,variant_worry), by = c("p_id"="p_id","round"="round"))%>%
+  left_join(df_class, by = c("p_id"="p_id"))%>%
+  left_join(vax_simp_long%>%select(-vax), by = c("p_id"="p_id","round"="round"))
+
+vax_cont_long_wk <- readRDS("0_RDSdata/3_vax_cont_long_wk.RDS")%>%
+  left_join(string_long%>%select(p_id, round, StringencyIndex, string_cat), by = c("p_id"="p_id","round"="round"))%>%
+  left_join(behav_long%>%select(p_id,round,variant_worry), by = c("p_id"="p_id","round"="round"))%>%
+  left_join(df_class, by = c("p_id"="p_id"))
+
+vax_cont_long_oth <- readRDS("0_RDSdata/3_vax_cont_long_oth.RDS")%>%
+  left_join(string_long%>%select(p_id, round, StringencyIndex, string_cat), by = c("p_id"="p_id","round"="round"))%>%
+  left_join(behav_long%>%select(p_id,round,variant_worry), by = c("p_id"="p_id","round"="round"))%>%
+  left_join(df_class, by = c("p_id"="p_id"))
+
+
+##Function to get coefficients, standard error, tvalue and confidence interval
+mod_res <- function(x){
+  d1 <- as.data.frame(summary(x)$coefficients)
+  d2 <- as.data.frame(confint(x))
+  colnames(d2)<-c("lo_2.5","hi_97.5")
+  d1$cat <- row.names(d1)
+  d2$cat <- row.names(d2)
+  d1 <- d1%>%left_join(d2, keep=F)
+  d1<- d1%>%mutate_if(is.numeric, round,2)%>%
+    mutate(est = paste(Estimate,"(",lo_2.5,"-",hi_97.5,")",sep=""))
+  print(d1)
+}
+
+
+# Modeling change in all contacts
+## Random effects linear mixed models
+### Univariate
+
+res_list <- list()
+res_list[[1]] <- lmer(cont_chng~dose+(1|p_id),data = vax_cont_long)
+res_list[[2]] <- lmer(cont_chng ~ round+(1|p_id), data = vax_cont_long)
+res_list[[3]] <- lmer(cont_chng ~ age_cat1+(1|p_id), data = vax_cont_long)
+res_list[[4]] <- lmer(cont_chng~ race_eth_i+(1|p_id),data = vax_cont_long)
+res_list[[5]] <- lmer(cont_chng~ pol_cat+(1|p_id),data = vax_cont_long)
+res_list[[6]] <- lmer(cont_chng~ hh_cat+(1|p_id),data = vax_cont_long)
+res_list[[7]] <- lmer(cont_chng~ gender_i+(1|p_id),data = vax_cont_long)
+res_list[[8]] <- lmer(cont_chng~ comorb_cat+(1|p_id),data = vax_cont_long)
+res_list[[9]] <- lmer(cont_chng~ emp_cat+(1|p_id),data = vax_cont_long)
+res_list[[10]]<- lmer(cont_chng~ all_cont_r1+(1|p_id), data = vax_cont_long)
+res_list[[11]]<-lmer(cont_chng~variant_worry+(1|p_id), data = vax_cont_long)
+res_list[[12]]<-lmer(cont_chng~StringencyIndex+(1|p_id), data=vax_cont_long)
+res_list[[13]]<-lmer(cont_chng~string_cat+(1|p_id), data=vax_cont_long)
+res_list[[14]]<-lmer(cont_chng~lca4_full+(1|p_id), data=vax_cont_long)
+
+res_uni<- lapply(res_list,mod_res)
+tab_uni <-do.call(rbind, res_uni)
+
+uni <- lmer(value~dose+(1|p_id),data = vax_cont_long)
+uni_res <- mod_res(uni)
+mod_full4<- lmer(value ~ dose+StringencyIndex+variant_worry+age_cat1+pol_cat+hh_cat+emp_cat+all_cont_r1+lca4_full+(1|p_id), data = vax_cont_long)
+full_res4 <- mod_res(mod_full4)

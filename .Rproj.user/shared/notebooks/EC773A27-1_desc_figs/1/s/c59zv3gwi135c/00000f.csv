@@ -1,0 +1,92 @@
+"0","library(dplyr)"
+"2","
+Attaching package: ‘dplyr’
+
+"
+"2","The following objects are masked from ‘package:stats’:
+
+    filter, lag
+
+"
+"2","The following objects are masked from ‘package:base’:
+
+    intersect, setdiff, setequal, union
+
+"
+"0","library(tidyr)"
+"0","library(ggplot2)"
+"0","library(meantables)"
+"0","library(scales)"
+"0","library(purrr)"
+"2","
+Attaching package: ‘purrr’
+
+"
+"2","The following object is masked from ‘package:scales’:
+
+    discard
+
+"
+"0","library(viridis)"
+"2","Loading required package: viridisLite
+"
+"2","
+Attaching package: ‘viridis’
+
+"
+"2","The following object is masked from ‘package:scales’:
+
+    viridis_pal
+
+"
+"0","library(flextable)"
+"2","Registered S3 method overwritten by 'data.table':
+  method           from
+  print.data.table     
+"
+"2","
+Attaching package: ‘flextable’
+
+"
+"2","The following object is masked from ‘package:purrr’:
+
+    compose
+
+"
+"0","library(RColorBrewer)"
+"0","library(gridExtra)"
+"2","
+Attaching package: ‘gridExtra’
+
+"
+"2","The following object is masked from ‘package:dplyr’:
+
+    combine
+
+"
+"0","library(grid)"
+"0","library(ggpubr)"
+"2","
+Attaching package: ‘ggpubr’
+
+"
+"2","The following objects are masked from ‘package:flextable’:
+
+    border, font, rotate
+
+"
+"0","library(cowplot)"
+"2","
+Attaching package: ‘cowplot’
+
+"
+"2","The following object is masked from ‘package:ggpubr’:
+
+    get_legend
+
+"
+"0","df_cont_cov <- readRDS(""0_RDSdata/3_cont_long_cov.RDS"")"
+"0","df_behav <- readRDS(""0_RDSdata/2_behavior_r1r2r3r4.RDS"") #Wide version of behavior info r1-r4"
+"0","vax_cont_long_full <- readRDS(""0_RDSdata/3_vax_cont_long_full.RDS"")"
+"0",""
+"0",""

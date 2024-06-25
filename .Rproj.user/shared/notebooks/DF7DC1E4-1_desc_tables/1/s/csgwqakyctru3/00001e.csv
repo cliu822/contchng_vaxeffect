@@ -1,0 +1,5 @@
+"0","vax_worry_round <- vax_cont_all99%>%
+  group_by(round, variant_worry_cat,vax_cat2)%>%
+  dplyr::summarise(n=n())
+"
+"2","`summarise()` has grouped output by 'round', 'variant_worry_cat'. You can override using the `.groups` argument."

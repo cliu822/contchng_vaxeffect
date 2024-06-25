@@ -1,0 +1,341 @@
+##Read in main results from model
+res_full_list <- readRDS("0_RDSdata/4_res_full_list.RDS")
+get_maineff1 <- function(x){
+  
+  main_eff <- x%>%filter(cat %in% c("vax_cat2a1_first_new",
+                                    "vax_cat2a2_full_new",
+                                    "vax_cat2a3_full_vax",
+                                    "Series_Complete_Pop_Pct"))%>%
+    select(cat,Estimate.x, lo_2.5.x,hi_97.5.x,Estimate.y,lo_2.5.y,hi_97.5.y)%>%
+    mutate(cat = gsub("vax_cat2","",cat))
+  colnames(main_eff)<- c("vaxcat","uni_est","uni_lo","uni_hi","multi_est","multi_lo","multi_hi")
+  return(main_eff)
+}
+
+##Function to take raw output and simplify into presentable table
+get_tab <- function(x){
+  res_tab <-x%>%
+    select(cat, est.x, est.y)%>%
+    rename("Univariate"="est.x")%>%
+    rename("Multivariate"="est.y")
+  return(res_tab)
+}
+
+
+##Get the main effect
+res_main_list<- lapply(res_full_list, get_maineff1)
+res_main<- dplyr::bind_rows(res_main_list, .id = 'model')
+
+##Get tables for export
+res_tab_list <- lapply(res_full_list,get_tab)
+write.xlsx(res_tab_list, "0_tab/res_maineffect_full.xlsx")
+
+
+###Visualizations for main effect
+empty <- data.frame(model ="val99_all",vaxcat = "",mod=rep(c("Multivariate","Univariate"),each=4),truncate="val99",outcome=c("all","other","work","home"),
+                    est = NA, lo=NA, hi=NA)
+
+##Wrangle for all truncations
+res_main<- res_main%>%
+  pivot_longer(cols=uni_est:multi_hi, names_to="var",values_to="values")%>%
+  #mutate(values = ifelse(vaxcat=="Series_Complete_Pop_Pct",values*20,values))%>%
+  mutate(mod= sub("_.*", "", var),         ##Extract pattern before underscore, uni or multi model
+         var= sub(".*_", "", var),         ##Extract pattern after underscore, estimate type, either estimate, lo or hi bounds
+         truncate =sub("_.*", "", model),  ##Type of truncation (100 contacts, 99th, 97.5th or 95th percentile)
+         outcome = sub(".*_", "", model)   ##Type of outcome (all, other, work or home)
+  )%>%   
+  pivot_wider(names_from = "var",values_from = "values")%>%
+  
+  
+  bind_rows(empty)%>%
+  ##Fixing labels
+  mutate(vaxcat = case_when(
+    vaxcat == ""~"",
+    vaxcat =="a1_first_new"~"First dose new",
+    #vaxcat == "a2_both_new"~"Both dose new",
+    vaxcat=="a2_full_new"~"Newly completed series",
+    vaxcat=="a3_full_vax"~"Already fully vaxed",
+    vaxcat=="Series_Complete_Pop_Pct"~"Every 20% increase in vax coverage"),
+    vaxcat=factor(vaxcat, levels = c("Every 20% increase in vax coverage","","First dose new","Both dose new","Newly completed series","Already fully vaxed")),
+    
+    truncate = case_when(
+      truncate=="val100"~"100 contacts",
+      truncate=="val99" ~"99th percentile",
+      truncate=="val975"~"97.5th percentile",
+      truncate=="val95"~"95th percentile"),
+    
+    mod = ifelse(mod=="uni","Univariate","Multivariate"),
+    outcome = factor(outcome, levels = c("all","other","work","home")))%>%
+  
+  arrange(truncate,outcome,mod,vaxcat)
+
+
+## Main effect estimates using 99th percentile truncation
+p1_main <-res_main %>%
+            filter(truncate=="99th percentile")%>%
+            mutate(outcome = case_when(
+              outcome=="all"~"All",
+              outcome=="other"~"Other",
+              outcome=="work"~"Work",
+              outcome=="home"~"Home"
+            ),
+            outcome = factor(outcome, levels= c("All","Work","Other","Home")))%>%
+            ggplot(aes(x=vaxcat, color=mod, group=mod))+
+            geom_point(aes(y=est),size=5,position=position_dodge(width=0.5))+
+            geom_errorbar(aes(ymin = lo, ymax=hi),width=0.2, size=1, position=position_dodge(width=0.5))+
+            geom_hline(yintercept=0, linetype="dashed")+
+            scale_color_brewer(palette = "YlGnBu",direction=-1, name="Model")+
+            scale_x_discrete(labels=function(x) str_wrap(x,width=12))+
+            theme_bw()+
+            ggtitle("A. Model results")+ylab("Difference in contact change compared to contact change among unvaccinated")+
+            xlab("Vaccination status")+
+            coord_flip()+
+            facet_wrap(~outcome, ncol=4)+
+            theme(legend.position = c(0.93, 0.32), 
+                  legend.text = element_text(size=13),
+                  legend.title=element_text(size=16),
+                  axis.text.y = element_text(size=16),
+                  axis.text.x = element_text(size=16),
+                  axis.title = element_text(size=16),
+                  plot.title = element_text(size=20),
+                  strip.text = element_text(size=16))
+
+
+df1 <- readRDS("0_RDSdata/4_r0_varyQcov.RDS")
+us_cov<- data.frame(us_cov = c(0.115,0.498,0.659),
+                    round = c("Round 2","Round 3","Round 4"))
+
+df1a <- df1%>%
+  mutate(r0_rel = r0/3)%>%
+  filter(cov!=0 &cov!=1)%>%
+  mutate(Q=round(Q,digits=1),
+         round = case_when(
+           round=="round2"~"Round 2",
+           round=="round3"~"Round 3",
+           round=="round4"~"Round 4"
+         ))%>%
+  group_by(cov,Q,round)%>%
+  summarise(r0_rel = mean(r0_rel))
+
+p4 <- 
+  ggplot()+
+  geom_raster(data=df1a,aes(x=Q, y=cov, z=r0_rel, fill=r0_rel))+
+  geom_contour(data=df1a,aes(x=Q,y=cov,z=r0_rel),color="black",alpha=0.7)+
+  geom_hline(data=us_cov,aes(yintercept=us_cov), linetype="dashed", color = "red",size=1)+
+  geom_text(data=us_cov,aes(y=us_cov,x=0.5,label = "US coverage",vjust=-0.3), color="red", size=5)+
+  scale_fill_viridis_c(breaks = c(0.4,0.5,0.6,0.7,0.8,0.9,1.0,1.1), "Ratio \nof Rt/R0")+
+  facet_wrap(~round)+theme_bw()+xlab("Q (Assortativity index)")+ylab("Vaccine coverage")+
+  ggtitle("B. Relative transmissibility based on measured contact in vaxed and unvaxed for each round")+
+  theme(legend.position = "left",
+        legend.text = element_text(size=13),
+        legend.title=element_text(size=16),
+        axis.text.y = element_text(size=16),
+        axis.text.x = element_text(size=16),
+        axis.title = element_text(size=16),
+        plot.title = element_text(size=20),
+        strip.text = element_text(size=16),
+        plot.margin=unit(c(0.7,0.2,1,0.1),"cm"))
+
+png("0_plot/1_fig2_v5.png",width=14,height=12, units="in",res=400)
+gridExtra::grid.arrange(p1_main,p4,ncol=1, nrow=2, 
+                        layout_matrix=rbind(1,2))
+dev.off()
+
+png("0_plot/p1_main.png",width=12,height=6, units="in",res=400)
+p1_main
+dev.off()
+
+##Supplementary for different truncations
+p1_supp <- res_main%>%
+  ggplot(aes(x=vaxcat, color=mod, group=mod))+
+  geom_point(aes(y=est),size=5,position=position_dodge(width=0.7))+
+  geom_errorbar(aes(ymin = lo, ymax=hi),width=0.4, size=1.0, position=position_dodge(width=0.7))+
+  geom_hline(yintercept=0, linetype="dashed")+
+  scale_color_brewer(palette = "YlGnBu",direction=-1, name="Model")+
+  theme_bw()+
+  ggtitle("Model results")+ylab("Difference in contact change compared to contact change among unvaccinated")+
+  xlab("Vaccination status")+
+  coord_flip()+
+  facet_grid(rows = vars(truncate),cols=vars(outcome))+
+  theme(legend.position = "bottom",
+        axis.text = element_text(size=16),
+        axis.title=element_text(size=16),
+        plot.title = element_text(size=16),
+        strip.text = element_text(size=16),
+        legend.text = element_text(size=16))
+
+png("0_plot/1_modres_supp_v5.png",width=12,height=12, units="in",res=500)
+p1_supp
+dev.off()
+
+
+##Supplementary varying across VEs for rel transmission
+df <- readRDS("0_RDSdata/4_r0_ve_varyQ.RDS")
+
+p2 <- df%>%
+  mutate(rel_r0 = r0/3,
+         ve_s = as.factor(ve_s))%>%
+  filter(ve_s %in% c(0, 0.10,0.20,0.30,0.40,0.50,0.60,0.70,0.80))%>%
+  mutate(ve_s = factor(ve_s, levels = c(0.8,0.7,0.6,0.5,0.4,0.3,0.2,0.1,0)),
+         round = case_when(
+           round=="round2"~"Round 2",
+           round=="round3"~"Round 3",
+           round=="round4"~"Round 4"
+         ))%>%
+  ggplot(aes(x=Q, y=rel_r0,group=ve_s))+
+  scale_color_brewer(palette="BuPu",direction=1,"Round")+
+  #geom_point(aes(size=ve_s, color=ve_s),alpha=1)+
+  scale_size_manual(values=c(0.6,0.9,1.1,1.1,1.2,1.2,1.3,1.3,1.4))+
+  guides(size="none")+
+  geom_line(alpha=1, size=0.8, aes(color=ve_s))+
+  facet_wrap(~round)+theme_bw()+
+  xlab("Q (Assortativity coefficient)")+
+  ylab("Relative transmissibility (Ratio of Rt/R0)")+
+  ggtitle("Relative transmissibility based on measured contact & vax coverage for each round")+
+  theme(legend.position = "left",
+        legend.text = element_text(size=13),
+        legend.title=element_text(size=16),
+        axis.text.y = element_text(size=16),
+        axis.text.x = element_text(size=16),
+        axis.title = element_text(size=16),
+        plot.title = element_text(size=20),
+        strip.text = element_text(size=16),
+        plot.margin=unit(c(2,0.2,1,0.1),"cm"))
+
+png("0_plot/3_supp10.png", width=12, height=6, units="in",res=400)
+p2
+dev.off()
+
+##Other option for Figure two with relative transmissibility all rounds one panel
+# select 50% VEs and coverage based on US average
+
+p3 <- df%>%
+  mutate(rel_r0 = r0/3,
+         ve_s = as.factor(ve_s))%>%
+  filter(ve_s== 0.50)%>%
+  mutate(
+    round = case_when(
+      round=="round2"~"Round 2",
+      round=="round3"~"Round 3",
+      round=="round4"~"Round 4"
+    ))%>%
+  ggplot(aes(x=Q, y=rel_r0,color=round,group=round))+
+  scale_color_brewer(palette="BuPu",direction=1,"Round")+
+  geom_line(size=1.8)+
+  theme_bw()+
+  xlab("Q (Assortativity coefficient)")+
+  ylab("Relative transmissibility (Ratio of Rt/R0)")+
+  ylim(0.5,1.2)+
+  ggtitle("B. Relative transmissibility based on measured contact & vax coverage for each round")+
+  theme(legend.position = "left",
+        legend.text = element_text(size=13),
+        legend.title=element_text(size=16),
+        axis.text.y = element_text(size=16),
+        axis.text.x = element_text(size=16),
+        axis.title = element_text(size=16),
+        plot.title = element_text(size=20),
+        strip.text = element_text(size=16),
+        plot.margin=unit(c(0.8,0.2,1,0.1),"cm"))
+
+png("0_plot/1_fig2_v4.png",width=14,height=12, units="in",res=400)
+gridExtra::grid.arrange(p1_main,p3,ncol=1, nrow=7, 
+                        layout_matrix=rbind(1,1,1,1,2,2,2))
+dev.off()
+
+###Scraps below
+
+
+
+
+
+
+df1 <- readRDS("0_RDSdata/4_r0_ve_vary.RDS")
+df1 <- readRDS("0_RDSdata/4_r0_ve_realcov.RDS")
+
+pal2 <- c("#BFD3E6","#9EBCDA","#8C6BB1","#810F7C","#4D004B")
+df1 <- df1%>%
+  mutate(r0_rel = r0/3)
+p2a <-df1%>%
+  select(ve_s, round, r0_rel,cov)%>%
+  filter(ve_s %in%c(0,0.25,0.5,0.75,0.95))%>%
+  ggplot(aes(x=round, y=r0_rel,color=factor(ve_s), group=ve_s))+
+  geom_point(size=2)+
+  geom_line(size=1)+
+  scale_color_manual(values=rev(pal2), labels=c("0%","25%","50%","75%","95%"),"VE")+
+  #scale_color_brewer(palette="BuPu",direction=-1)+
+  theme_classic()+ylab("R relative to initial R0")+
+  xlab("Round")+
+  ggtitle("Relative transmissibility based on measured contacts in vaxed & unvaxed")+
+  theme(
+    legend.text = element_text(size=12),
+    legend.title=element_text(size=14),
+    axis.text.y = element_text(size=14),
+    axis.text.x = element_text(size=11),
+    axis.title=element_text(size=14),
+    plot.title = element_text(size=14))
+
+png("0_plot/p2a.png",width=7,height=4, units="in",res=400)
+p2a
+dev.off()
+
+
+pal <- c("#A50026","#D73027", "#F46D43","#FDAE61","#FEE090","#FFFFBF","#E0F3F8","#ABD9E9","#74ADD1","#4575B4","#313695")
+#pal <- c("#A50026","#D73027","#F46D43","#FDAE61","#FEE08B","#FFFFBF","#D9EF8B","#A6D96A",
+#"#66BD63","#1A9850","#006837")
+survey_cont <- data.frame(cont_v = c(9.2,11.6,14.9),
+                          cont_u = c(11.5,15.6,17.3),
+                          round = c("round1","round2","round3"))
+
+df <- df%>%
+  mutate(cont_v = cont_vv+cont_vu,
+         cont_u = cont_uu+cont_uv)%>%
+  filter(ve_s %in% c(0,0.25,0.5,0.75,0.95))%>%
+  mutate(ve_lab = paste("VE - ",ve_s*100,"%", sep=""))
+
+
+
+df50 <- df%>%filter(ve_s==0.50)
+p2b <- ggplot()+
+  geom_raster(data=df50,aes(x=cont_v, y=cont_u,z=r0_rel,fill=r0_rel),alpha=0.8)+
+  scale_fill_gradientn(breaks=c(0,0.5,1,1.5,2,2.5),colours=rev(pal))+
+  geom_point(data=survey_cont, aes(x=cont_v,y=cont_u,label=round),shape=18,size=4)+
+  geom_text(data=survey_cont,aes(x=cont_v,y=cont_u,label=round), nudge_y = -1.3, nudge_x = 2)+
+  theme_bw()+
+  xlab("Contacts per person per day among vaccinated")+ylab("Contacts per person per day \n among unvaxed")+
+  ggtitle("")+
+  theme(legend.position = "left",
+        legend.text = element_text(size=14),
+        legend.title=element_text(size=14),
+        axis.text.y = element_text(size=14),
+        axis.text.x = element_text(size=14),
+        axis.title=element_text(size=14),
+        plot.title = element_text(size=14),
+        strip.text = element_text(size=14))
+
+p2b_supp <- ggplot()+
+  geom_raster(data=df,aes(x=cont_v, y=cont_u,z=r0_rel,fill=r0_rel),alpha=0.8)+
+  scale_fill_gradientn(breaks=c(0,0.5,1,1.5,2,2.5),colours=rev(pal))+
+  geom_point(data=survey_cont, aes(x=cont_v,y=cont_u,label=round),shape=18,size=4)+
+  geom_text(data=survey_cont,aes(x=cont_v,y=cont_u,label=round), nudge_y = -1.3, nudge_x = 2)+
+  facet_wrap(~ve_lab,nrow=1)+
+  theme_bw()+
+  xlab("Contacts per person per day among vaccinated")+ylab("Contacts per person per day \n among unvaxed")+
+  ggtitle("")+
+  theme(legend.position = "left",
+        legend.text = element_text(size=14),
+        legend.title=element_text(size=14),
+        axis.text.y = element_text(size=14),
+        axis.text.x = element_text(size=14),
+        axis.title=element_text(size=14),
+        plot.title = element_text(size=14),
+        strip.text = element_text(size=14))
+
+png("0_plot/1_fig2_v2.png",width=13,height=10, units="in",res=400)
+#grid.arrange(p1,p8,p10,ncol=2,nrow=2,
+#             layout_matrix=rbind(c(1,2),c(1,3)))
+gridExtra::grid.arrange(p1_main,p2,ncol=1, nrow=5, 
+                        layout_matrix=rbind(1,2))
+dev.off()
+
+
+

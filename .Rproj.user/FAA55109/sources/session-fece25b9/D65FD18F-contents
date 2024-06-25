@@ -1,0 +1,67 @@
+df_base <- readRDS("0_RDSdata/0_baseline_characteristics.RDS") #Wide version baseline characteristics
+df_base_an <- readRDS("0_RDSdata/99_r1_analytical.RDS") #Wide version baseline with imputation
+df_hh_enum <- readRDS("0_RDSdata/0_hh_enum.RDS") #Wide version hh enumeration
+df_class <- readRDS("0_RDSdata/0_lca_class.RDS")
+
+
+df_base <- df_base %>% 
+  mutate(pol_cat = ifelse(is.na(pol_cat),"unk",pol_cat)) %>%
+  
+  left_join(df_base_an %>% dplyr::select(p_id, GENDER_I, RACE_ETHNICITY_I)) %>%  ##Join in imputed variables
+  left_join(df_hh_enum %>% dplyr::select(p_id, hh_num)) %>%                      ##Join in household size number
+  left_join(df_class%>%dplyr::select(p_id, lca4_full))%>%                        ##Join in LCA class
+  
+  mutate(gender_i = ifelse(GENDER_I==1, "Male","Female"),
+         
+         race_eth_i = case_when(
+           RACE_ETHNICITY_I == 1 ~ "1_Hisp",
+           RACE_ETHNICITY_I == 2 ~ "2_NH-White",
+           RACE_ETHNICITY_I == 3 ~ "3_NH-Black",
+           RACE_ETHNICITY_I == 4 ~ "4_NH-Asian",
+           RACE_ETHNICITY_I == 5 ~ "5_NH-Other"),
+         hh_cat = case_when(
+           hh_num==1 ~ "1",
+           hh_num<=4 ~"2-4",
+           hh_num >4 ~"5+"),
+         
+         comorb_cat = case_when(
+           comorb_cat == 1 ~"Yes",
+           comorb_cat == 0 ~ "No"),
+         pol_cat = case_when(
+           pol_cat =="dem"~"Dem",
+           pol_cat == "rep"~"Rep",
+           pol_cat =="ind"~"Ind",
+           pol_cat == "unk"~"Unknown Pol"),
+         
+         emp_cat = case_when(
+           is.na(emp_cat)~"Unknown Emp",
+           emp_cat == "unk"~"Unknown Emp",
+           emp_cat == "no_emp"~"Unemp",
+           emp_cat == "emp_noleave"~"Emp,in home",
+           emp_cat == "emp_leave" ~"Emp,out home"),
+         
+         lca4_full=case_when(lca4_full ==1 ~"High",
+                             lca4_full ==2 ~"Med-high",
+                             lca4_full ==3 ~"Med-low",
+                             lca4_full ==4 ~"Low"),
+         lca4_full = factor(lca4_full, levels=c("High","Med-high","Med-low","Low")))%>%
+  
+  dplyr::select(-GENDER_I,-RACE_ETHNICITY_I, -hh_num)%>%
+  mutate(income_cat = case_when(
+    income ==9 ~NA_character_,
+    income%in% c(1,2)~"0_24000",
+    income%in% c(3,4)~"25000_74000",
+    income%in% c(5,6)~"75000_149000",
+    income%in% c(7,8)~"150000"
+  ),
+  income_cat = factor(income_cat, levels = c("0_24000","25000_74000","75000_149000","150000")))
+
+tab_cov_base  <- df_base%>%
+  dplyr::select(p_id,age_cat1,gender_i,race_eth_i,hh_cat, pol_cat, emp_cat,income_cat,comorb_cat,lca4_full)%>%
+  pivot_longer(cols=age_cat1:lca4_full, names_to="var",values_to="val")%>%
+  group_by(var,val)%>%
+  dplyr::summarise(n=n())%>%
+  mutate(prop = round((n/4654)*100, digits = 0))%>%
+  mutate(n_prop = paste0(n,"(",prop,"%)"))
+
+write.csv(tab_cov_base, "0_tab/tab_cov_base.csv")

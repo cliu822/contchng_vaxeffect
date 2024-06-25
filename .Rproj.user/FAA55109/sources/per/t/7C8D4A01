@@ -1,0 +1,26 @@
+{
+    "id": "7C8D4A01",
+    "path": "~/DIssertation/Aim 1/COVIDVu Data/0_data_processing_vaxlong.R",
+    "project_path": "0_data_processing_vaxlong.R",
+    "type": "r_source",
+    "hash": "712088829",
+    "contents": "",
+    "dirty": false,
+    "created": 1713214484388.0,
+    "source_on_save": false,
+    "relative_order": 7,
+    "properties": {
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "336,70",
+        "scrollLine": "323"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1713288910,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1713288910550,
+    "read_only": false,
+    "read_only_alternatives": []
+}

@@ -1,0 +1,18 @@
+"0","df_cont_cov_long <- df_cont_cov%>%
+                        dplyr::select(round, p_id, val99_all, age_cat1:emp_cat)%>%                      #Select round, all contacts 99th percentile, covariate 
+                        pivot_longer(cols = age_cat1:emp_cat, names_to=""var"",values_to=""val"")%>%
+                    
+                         mutate(val = ifelse(val %in% c(""Unknown Pol"", ""Unknown Emp""), NA_character_,val),
+                                val = factor(val,
+                                                          levels = c(""18-24"",""25-34"",""35-44"",""45-54"",""55-64"",""65+"",
+                                                                     ""Female"",""Male"",
+                                                                     ""1_Hisp"",""2_NH-White"",""3_NH-Black"",""4_NH-Asian"",""5_NH-Other"",
+                                                                     ""1"",""2-4"",""5+"",
+                                                                     ""Rep"",""Dem"",""Ind"", 
+                                                                     ""Emp,out home"",""Emp,in home"",""Unemp"", NA)))%>%
+                    
+                                       left_join(var_lab)%>%
+        
+                                        rename(""value""=""val99_all"")  ##name change to fit into the plotting stuff
+"
+"2","Joining with `by = join_by(var)`"

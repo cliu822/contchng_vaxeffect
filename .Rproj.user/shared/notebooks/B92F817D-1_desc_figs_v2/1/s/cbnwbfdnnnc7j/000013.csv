@@ -1,0 +1,10 @@
+"0","png(""0_plot/2_meancont_vaxdose.png"",width=8,height=5, units=""in"",res=300)
+p1b+ggtitle(""Contact rates by vaccine doses received"")
+dev.off()
+"
+"1","null device "
+"1","
+"
+"1","          1 "
+"1","
+"

@@ -1,0 +1,439 @@
+---
+title: "Descriptives"
+author: "Carol Liu"
+date: "6/1/2022"
+output: html_document
+---
+# Summary
+Below explores contact trajectory over different rounds of COVIDVU survey. (Round 1 = Aug-Dec, 2020; Round 2 = Mar-April, 2021; Round 3 = July-Aug, 2021).The sample size for people who competed all three rounds is 2609. We also do a deeper dive on whether or not we have sufficient datato answer the question "Did vaccination change contact rate?"
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, message = F, warning = F)
+```
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(scales)
+library(purrr)
+library(viridis)
+library(flextable)
+
+df_contact_long <- readRDS("0_RDSdata/1_contact_long_r1r2r3.RDS")
+df_behav <- readRDS("0_RDSdata/2_behavior_r1r2r3.RDS")
+df_surv_dt <- readRDS("0_RDSdata/0_surveydates.RDS")
+df_base <- readRDS("0_RDSdata/0_baseline_characteristics.RDS")
+
+df_base_an <- readRDS("0_RDSdata/99_r1_analytical.RDS")
+df_hh_enum <- readRDS("0_RDSdata/0_hh_enum.RDS")
+```
+
+```{r}
+## Additional data cleaning stuff
+df_base <- df_base %>% 
+            mutate(pol_cat = ifelse(is.na(pol_cat),"unk",pol_cat))
+
+df_base <- df_base %>%
+                left_join(df_base_an %>% select(p_id, GENDER_I, RACE_ETHNICITY_I)) %>%
+                left_join(df_hh_enum %>% select(p_id, hh_num)) %>%
+  
+            mutate(GENDER_I = case_when(
+                               GENDER_I ==1 ~"Male",
+                               GENDER_I ==2 ~ "Female"),
+                    RACE_ETHNICITY_I = case_when(
+                               RACE_ETHNICITY_I == 1 ~ "1_Hisp",
+                               RACE_ETHNICITY_I == 2 ~ "2_NH-White",
+                               RACE_ETHNICITY_I == 3 ~ "3_NH-Black",
+                               RACE_ETHNICITY_I == 4 ~ "4_NH-Asian",
+                               RACE_ETHNICITY_I == 5 ~ "5_NH-Other"
+                       ),
+                     hh_cat = case_when(
+                               hh_num==1 ~ "1",
+                               hh_num<=4 ~"2-4",
+                               hh_num >4 ~"5+"
+                     ),
+                     comorb_cat = case_when(
+                                comorb_cat == 1 ~"Y",
+                                comorb_cat == 0 ~ "N"
+                     ))
+            
+```
+
+
+## Participant descriptives for those who completed 3 rounds
+Overall, 56% of those enrolled at baseline completed three rounds of survey. The elderly (55+) and females were more likely to have been retained across three rounds and Hispanic and non-hispanic black individuals were less likely to be retained. 
+```{r}
+df_base <- df_base %>%
+           mutate(included = ifelse(p_id %in% unlist(df_surv_dt$p_id),"Inc","Exc"))
+
+df_base %>% select(included,age_cat1, pol_cat,emp_cat, comorb_cat,
+                   GENDER_I, RACE_ETHNICITY_I, hh_cat) %>%
+                    
+                    pivot_longer(cols = age_cat1:hh_cat, names_to = "var", values_to = "val") %>%
+  group_by(included,var,val) %>%
+  summarise(n=n()) %>%
+  pivot_wider(names_from=(c("included")), values_from ="n") %>%
+  mutate(tot_baseline = Inc+Exc,
+        variable_dist_base = round(tot_baseline/nrow(df_base), digits=2),
+        variable_dist_inc = round(Inc/nrow(df_surv_dt), digits=2),
+        probability_inclusion = round(Inc/(Exc+Inc),digits=2)) %>%
+  select(var, val, tot_baseline, variable_dist_base, Inc, variable_dist_inc, probability_inclusion) %>%
+  flextable()
+
+```
+
+
+```{r}
+df_cont_all_long <- df_contact_long %>% 
+                    filter(type == "all") %>%
+                    mutate(value = ifelse(value>100,100,value)) ### Made all those with greater than 100 into 100, essentially right censored?
+  
+```
+
+Looking at individual contact trajectory, can't see much, too many individuals. 
+```{r}
+df_cont_all_long %>%
+  ggplot(aes(x=round, y =value)) +
+  geom_line(aes(group = as.factor(p_id)), size=1)+
+  geom_point(aes(group= as.factor(p_id))) +
+  ggtitle("Individual contact trajectory over three rounds")
+```
+
+## Overall distribution of contacts by round with different truncations
+We truncated the number of contacts at 100 since having 100 contacts in one day is plausible for occupations or individuals with high contact rate. For better visualization, we also present the distribution truncated at 30 contacts. 
+```{r}
+df_cont_all_long %>%
+  ggplot(aes(color=round)) +
+  geom_histogram(aes(x=as.numeric(value),fill = round),position ="identity",alpha=0.3, binwidth=1)+
+  scale_color_viridis(discrete = T)+
+  scale_fill_viridis(discrete=T)+
+  xlim(-0.5,30) +
+  ggtitle("Distribution of all contacts reported over three rounds (30 truncate)")+xlab("Total contacts")+ ylab("No. participants reporting")+
+  theme_bw()
+
+## x-axis is discrete/categorical so density plot makes less sense but maybe slightly easier to visualize the shift in distribution
+df_cont_all_long %>%
+  ggplot(aes(value, fill=round)) +geom_density(position="dodge",alpha=0.3)+
+  scale_fill_viridis(discrete = T)+
+  xlim(0,30) +
+  ggtitle("Distribution of all contacts reported over three rounds (30 truncate)")+xlab("Total contacts")+
+  theme_bw()
+
+
+df_cont_all_long %>%
+  ggplot(aes(value, fill=round)) +geom_density(position="dodge",alpha=0.3)+
+  scale_fill_viridis(discrete = T)+
+  xlim(0,100) +
+  ggtitle("Distribution of all contacts reported over three rounds (100 truncate)")+xlab("Total contacts")+
+  theme_bw()
+```
+
+```{r}
+df_contact_long %>%
+  filter(loc !="all") %>%
+  group_by(p_id,loc,round)%>%
+  summarise(value = sum(value)) %>%
+  filter(value<=50) %>%
+  
+  ggplot() +
+  #geom_density(position="dodge",alpha=0.3)+
+  #xlim(-0.10,10) +
+  geom_histogram(aes(x=value, color=round, fill=round), position = "identity", alpha=0.3) +
+  scale_color_viridis(discrete = T)+
+  scale_fill_viridis(discrete=T)+
+  ggtitle("Distribution of contacts by location (10 truncate)")+xlab("Contacts")+
+  theme_bw() +facet_wrap(~loc, scale="free")
+
+df_contact_long %>%
+  filter(loc !="all") %>%
+  group_by(p_id,type,round)%>%
+  summarise(value = sum(value)) %>%
+  
+  ggplot(aes(value, fill=round)) +geom_density(position="dodge",alpha=0.3)+
+  scale_fill_viridis(discrete = T)+
+  xlim(0,10) +
+  ggtitle("Distribution of contacts by physical/nonphysical (10 truncate)")+xlab("Contacts")+
+  theme_bw() +facet_wrap(~type, scale="free")
+
+
+```
+
+### Mean/median contacts over survey month
+We can break down the sample by month of survey and look at mean and median contact rates. Sample here unlikely to be representative and there may be different demographic distributions. 
+General trend is that contacts gradually increased over months as low as 7 in August, 2020 and rising to 12 by August, 2021
+```{r}
+## Note that the prelim analysis below doesnt incorporate weights...
+## We find that those who filled in three rounds had lower contacts or r1 compared to those who only filled in one round... 
+
+df_contact_long <- df_contact_long %>%
+                    left_join(
+                              df_surv_dt %>% 
+                              select(p_id,month__r1, month__r2, month__r3, week__r1, week__r2, week__r3)%>%
+                              pivot_longer(cols = month__r1:week__r3, names_sep = "__", names_to= c("period", "round")) %>%
+                              pivot_wider(names_from = "period", values_from = "value"),
+                              
+                              by = c("p_id"="p_id", "round"="round")
+                    )
+
+df_contact_long %>%
+  filter(type=="all") %>%
+  mutate(value = ifelse(value>100,100,value)) %>%
+  group_by(month)%>%
+  summarise(sum = sum(value),
+            n= n(),
+            avg_cont = sum/n,
+            med_cont = median(value)) %>% flextable()
+```
+
+### Mean/median contacts over survery round
+```{r}
+df_contact_long %>%
+  filter(type=="all") %>%
+  mutate(value = ifelse(value>100,100,value)) %>%
+  group_by(round)%>%
+  summarise(sum = sum(value),
+            n= n(),
+            avg_cont = sum/n,
+            med_cont = median(value)) %>% flextable()
+
+```
+
+## Number receiving first dose by month at round 2
+It appears we have a very highly vaxed population, who were willing/enthusiastic about vaccination when it was first made available. 
+```{r}
+df_behav %>%
+            mutate(d1_month_r2 = format(vaccine_dose1_dt__r2, "%Y-%m"),
+                   d2_month_r2 = format(vaccine_dose2_dt__r2, "%Y-%m"),
+                   d1_month_r2 = ifelse(is.na(d1_month_r2),"None",d1_month_r2),
+                   d2_month_r2 = ifelse(is.na(d2_month_r2), "None", d2_month_r2)) %>%
+  left_join(df_base %>% select(p_id, age_cat1)) %>%
+  filter(vaccine_dose1_dt__r2>=as.Date("2020-12-01")| is.na(vaccine_dose1_dt__r2))%>%
+  group_by(age_cat1, d1_month_r2) %>%
+  summarise(n=n()) %>%
+  pivot_wider(names_from = "d1_month_r2", values_from = "n") %>%
+  flextable()
+  
+```
+
+## Mutually-exclusive vax category
+We further categorize vaccination into mutually exclusive categories across the three rounds. 
+```{r}
+## Rough categorization of vaccine uptake
+df_behav<- df_behav %>%
+            mutate(vax_cat = 
+                     case_when(rcvd_vaccine__r2==2~"r2_2d",
+                               rcvd_vaccine__r3==2~"r3_2d",
+                               rcvd_vaccine__r3==1~"r3_1d",
+                               rcvd_vaccine__r3==0~"r3_0d"
+                   ),
+                   vax_cat_lab =
+                      case_when(rcvd_vaccine__r2==2~"1_Two dose at round2",
+                               rcvd_vaccine__r3==2~"2_Two dose at round3",
+                               rcvd_vaccine__r3==1~"3_One dose at round3",
+                               rcvd_vaccine__r3==0~"4_Not vaxed at round3"))
+
+df_behav %>% group_by(vax_cat_lab) %>% summarise(n=n()) %>% flextable()
+```
+
+
+```{r}
+df_cont_all_long %>% 
+  left_join(df_behav %>% select(p_id, vax_cat_lab)) %>%
+  group_by(round,vax_cat_lab) %>%
+  summarise(mean=mean(value),
+            median = median(value)) %>%
+  arrange(vax_cat_lab)
+```
+
+## Contact trajectory by vaccine status over time
+we see that those who were never vaxed have consisntely higher number of contacts over time. These are mostly driven by increased work and home contacts. All contacts increased for all vax categories but appeared to increase more between round 2 and round 3 among those that received 2 doses of vaccine, this is perhaps the most obvious among the "other" contacts that are non-home, non-work and non-school. 
+```{r}
+
+#df_cont_all_long %>% 
+#  left_join(df_behav %>% select(p_id, vax_cat_lab)) %>%
+#  ggplot(aes(x=round, y=value, fill=as.factor(vax_cat_lab)))+
+#  geom_boxplot(position=position_dodge(1))+
+#  scale_y_continuous(trans=scales::pseudo_log_trans(base = 10))
+
+### Facet wrap of contact changes over time stratified by vax status in March 2021
+### Something wrong.. all should be closer to a max of 12
+df_contact_long %>%
+  filter(type != "all") %>%
+  mutate(value = ifelse(value>100,100,value))%>%
+ 
+  
+  group_by(p_id,loc,round)%>%
+  summarise(value=sum(value)) %>%
+  
+  left_join(df_behav %>% select(p_id, vax_cat_lab)) %>%
+  group_by(vax_cat_lab, round, loc) %>%
+  summarise(mean = mean(value))%>%
+  ggplot(aes(x=round, y =mean))+
+  geom_line(aes(group=as.factor(vax_cat_lab),color=as.factor(vax_cat_lab)))+
+  geom_point(aes(group=as.factor(vax_cat_lab),color=as.factor(vax_cat_lab)))+
+  facet_wrap(~loc, scales = "free")+
+  ggtitle("Mean contact trajectory by final vax status")
+
+df_contact_long %>%
+  filter(type != "all") %>%
+  mutate(value = ifelse(value>100,100,value))%>%
+ 
+  
+  group_by(p_id,loc,round)%>%
+  summarise(value=sum(value)) %>%
+  
+  left_join(df_behav %>% select(p_id, vax_cat_lab)) %>%
+  group_by(vax_cat_lab, round, loc) %>%
+  summarise(med = median(value))%>%
+  ggplot(aes(x=round, y = med))+
+  geom_line(aes(group=as.factor(vax_cat_lab),color=as.factor(vax_cat_lab)))+
+  geom_point(aes(group=as.factor(vax_cat_lab),color=as.factor(vax_cat_lab)))+
+  facet_wrap(~loc, scales = "free")+
+  ggtitle("Median contact trajectory by final vax status")
+
+```
+
+#### Change in contact R1-R2 based on vax status at R2
+```{r}
+df_cont_all_long %>% 
+  pivot_wider(names_from = "round", values_from = "value") %>%
+  select(-type, -loc) %>%
+  left_join(df_behav %>% select(p_id, rcvd_vaccine__r2)) %>%
+  group_by(rcvd_vaccine__r2) %>%
+  summarise(sum_r1 = sum(r1),
+            sum_r2 = sum(r2),
+            n = n()) %>%
+  mutate(avg_change_r1_r2 = (sum_r2-sum_r1)/n) %>%
+  
+  flextable()
+  
+```
+
+#### Change in contact R1-R2 based on vax status at R2 and age group
+```{r}
+df_cont_all_long %>% 
+  pivot_wider(names_from = "round", values_from = "value") %>%
+  select(-type, -loc) %>%
+  left_join(df_behav %>% select(p_id, rcvd_vaccine__r2)) %>%
+  left_join(df_base %>% select(p_id, age_cat2)) %>%
+  group_by(rcvd_vaccine__r2, age_cat2) %>%
+  summarise(sum_r1 = sum(r1),
+            sum_r2 = sum(r2),
+            n = n()) %>%
+  mutate(avg_change_r1_r2 = (sum_r2-sum_r1)/n) %>%
+  
+  flextable()
+  
+```
+
+
+### Contact trajectory by other covariates
+#### Age
+```{r}
+df_cont_long_cov <- df_contact_long %>%
+                  filter(type != "all") %>%
+                  mutate(value = ifelse(value>100,100,value))%>%
+
+                  group_by(p_id,loc,round)%>%
+                  summarise(value=sum(value)) %>%
+ 
+                  left_join(df_base %>% select(p_id, age_cat1, age_cat2,pol_cat,emp_cat, comorb_cat)) %>%
+                  left_join(df_base_an %>% select(p_id, GENDER_I, RACE_ETHNICITY_I)) %>%
+                  left_join(df_hh_enum %>% select(p_id, hh_num))
+
+
+df_cont_long_cov %>%
+  mutate(hh_num_cat = case_when(
+                hh_num ==1 ~ "1",
+                hh_num <5 ~"2-4",
+                hh_num >=5 ~ "5+"
+  ),
+         comorb_cat = ifelse(comorb_cat ==1, "Y", "N"),
+         gender_i = ifelse(GENDER_I==1, "Male","Female"),
+         race_eth_i = as.character(RACE_ETHNICITY_I)) %>%
+  
+  select(-GENDER_I,-RACE_ETHNICITY_I, -hh_num) %>%
+  
+  pivot_longer(cols = age_cat1:race_eth_i, names_to="var",values_to = "val")%>%
+  
+  group_by(var,val,round,loc)%>%
+  summarise(mean = mean(value)) %>%
+  
+  split(.$var) %>%
+  
+
+map(~ggplot(data =.,aes(x=round, y =mean))+
+              geom_line(aes(group=as.factor(val),color=as.factor(val)))+
+              geom_point(aes(group=as.factor(val),color=as.factor(val)))+
+              facet_wrap(~loc, scales = "free")+
+              ggtitle("Mean contact trajectory")
+)
+
+
+
+```
+
+
+
+
+### Explore binary threshold-based cutoffs for outcome
+```{r}
+
+### More than one contact occuring in other places (not work not school)
+
+viz_cutpoint <-  function(df99,cutpoint){
+   
+   df99 %>% mutate(
+              flag_1cont = ifelse(value>= cutpoint, 1,0)
+              ) %>%
+ 
+              group_by(round,loc, flag_1cont)%>%
+              summarise(n=n()) %>%
+              
+              arrange(loc, round) %>% 
+              
+              pivot_wider(values_from = n, names_from = flag_1cont, names_prefix = "cont") %>%
+              
+              mutate(prop_cont1 = cont1/(cont0+cont1))
+ }
+
+  
+  
+map(
+  .x = c(1,2,3,4,5,10),
+  .f = ~viz_cutpoint(df_contact_long %>% 
+                    group_by(p_id, loc, round) %>%
+                    summarise(value = sum(value)) %>%
+                    filter(loc %in% c("work", "school", "other")), cutpoint =.x)
+)
+
+### More than one contact occuring outside of the home
+
+```
+
+### Scrap box plots
+```{r}
+#df_contact_long %>% 
+#  filter(loc %in% c("other", "school","work")) %>%
+#  mutate(value = ifelse(value>100,100,value))%>% 
+#  left_join(df_behav %>% select(p_id, vax_cat)) %>%
+#  ggplot(aes(x=round, y=value, fill=as.factor(vax_cat)))+
+#  geom_boxplot(position=position_dodge(1))
+
+
+#df_cont_all_long %>%
+#  left_join(df_behav %>% select(p_id, vax_cat)) %>%
+#  group_by(vax_cat, round) %>%
+#  summarise(mean=mean(value))%>%
+#  ggplot(aes(x=round, y =mean))+
+#  geom_line(aes(group=as.factor(vax_cat),color=as.factor(vax_cat)))
+
+#df_contact_long %>% 
+#  filter(loc %in% c("other", "work")) %>%
+#  mutate(value = ifelse(value>30,30,value))%>% 
+  
+#  left_join(df_behav %>% select(p_id, vax_cat)) %>%
+#  ggplot(aes(x=round, y=value, fill=as.factor(vax_cat)))+
+#  geom_boxplot(position=position_dodge(1))
+```

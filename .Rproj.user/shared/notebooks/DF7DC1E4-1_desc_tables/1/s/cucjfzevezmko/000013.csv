@@ -1,0 +1,33 @@
+"0","vax_cont_all99%>%
+  mutate(vax_cat2 = as.numeric(vax_cat2),
+         variant_worry_cat = as.numeric(variant_worry_cat))%>%
+    group_by(round)%>%
+  dplyr::summarise(
+    correlation = list(cor.test(vax_cat2, variant_worry_cat, method=""spearman"")),
+    .groups='drop'
+  )%>%
+  mutate(
+    cor_value = map_dbl(correlation, ~ .$estimate),
+    p_value = map_dbl(correlation, ~ .$p.value)
+  ) %>%
+  select(-correlation) # To remove the list column if not needed
+"
+"2","Warning: [38;5;232mThere were 3 warnings in `dplyr::summarise()`.
+The first warning was:[39m
+[38;5;232m[36mℹ[38;5;232m In argument: `correlation = list(cor.test(vax_cat2, variant_worry_cat, method = ""spearman""))`.
+[36mℹ[38;5;232m In group 1: `round = ""r2""`.[39m
+Caused by warning in `cor.test.default()`:
+[33m![39m Cannot compute exact p-value with ties
+[38;5;232m[36mℹ[38;5;232m Run ]8;;ide:run:dplyr::last_dplyr_warnings()dplyr::last_dplyr_warnings()]8;; to see the 2 remaining warnings.[39m"
+"1","[1m[33mError[39m in `mutate()`:[22m
+[38;5;232m[36mℹ[38;5;232m In argument: `cor_value = map_dbl(correlation, ~.$estimate)`.[39m
+[1mCaused by error in `map_dbl()`:[22m
+[33m![39m could not find function ""map_dbl""
+Backtrace:
+[90m 1. [39m... %>% select(-correlation)
+[90m 4. [39m[1m[94mdplyr:::mutate.data.frame([39m[22m...[1m[94m)[39m[22m
+[90m 5. [39mdplyr:::mutate_cols(.data, dplyr_quosures(...), by)
+[90m 7. [39mdplyr:::mutate_col(dots[[i]], data, mask, new_columns)
+[90m 8. [39mmask$eval_all_mutate(quo)
+[90m 9. [39m[1mdplyr[22m (local) eval()
+"

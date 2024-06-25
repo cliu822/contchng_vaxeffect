@@ -1,0 +1,26 @@
+{
+    "id": "989C43EF",
+    "path": "~/DIssertation/Aim 1/COVIDVu Data/3_r0calc.R",
+    "project_path": "3_r0calc.R",
+    "type": "r_source",
+    "hash": "1300247913",
+    "contents": "",
+    "dirty": false,
+    "created": 1703647751368.0,
+    "source_on_save": false,
+    "relative_order": 4,
+    "properties": {
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "84,4",
+        "scrollLine": "0"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1712030852,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1712030852,
+    "read_only": false,
+    "read_only_alternatives": []
+}

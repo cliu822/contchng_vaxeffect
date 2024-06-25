@@ -1,0 +1,3 @@
+"0","df_behav <- readRDS(""0_RDSdata/2_behavior_r1r2r3r4.RDS"") #Wide version of behavior info r1-r4"
+"0","vax_cont_long_full <- readRDS(""0_RDSdata/3_vax_cont_long_full.RDS"")"
+"0","df_surv <- readRDS(""0_RDSdata/0_surveydates_r1r2r3r4.RDS"")"

@@ -1,0 +1,5 @@
+"0","cor.test(vax_cont_all99$vax_cat2, vax_cont_all99$variant_worry_cat, method = ""spearman"")
+"
+"2","Error in cor.test.default(vax_cont_all99$vax_cat2, vax_cont_all99$variant_worry_cat,  : 
+  'x' must be a numeric vector
+"

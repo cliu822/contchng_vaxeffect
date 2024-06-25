@@ -1,0 +1,23 @@
+"0","vax_cont_all99%>%
+  mutate(vax_cat2 = as.numeric(vax_cat2),
+         variant_worry_cat = as.numeric(variant_worry_cat))%>%
+  summarise(
+    correlation = list(
+        ~cor.test(vax_cat2, variant_worry_cat, method = ""spearman""), 
+      )
+  )
+"
+"1","[1m[33mError[39m in `summarise()`:[22m
+[38;5;232m[36mℹ[38;5;232m In argument: `correlation = list(...)`.[39m
+[1mCaused by error in `list()`:[22m
+[33m![39m argument 2 is empty
+Backtrace:
+[90m  1. [39m... %>% ...
+[90m  3. [39m[1m[94mdplyr:::summarise.data.frame([39m[22m...[1m[94m)[39m[22m
+[90m  4. [39mdplyr:::summarise_cols(.data, dplyr_quosures(...), by, ""summarise"")
+[90m  6. [39mdplyr:::map(quosures, summarise_eval_one, mask = mask)
+[90m  7. [39m[1mbase[22m::lapply(.x, .f, ...)
+[90m  8. [39m[1mdplyr[22m (local) FUN(X[[i]], ...)
+[90m  9. [39mmask$eval_all_summarise(quo)
+[90m 10. [39m[1mdplyr[22m (local) eval()
+"

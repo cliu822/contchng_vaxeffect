@@ -1,0 +1,48 @@
+---
+title: "3_extra"
+output: html_document
+date: "2023-08-03"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+```{r}
+df_behav <- readRDS("0_RDSdata/2_behavior_r1r2r3r4.RDS") #Wide version of behavior info r1-r4
+vax_cont_long_full <- readRDS("0_RDSdata/3_vax_cont_long_full.RDS")
+df_surv <- readRDS("0_RDSdata/0_surveydates_r1r2r3r4.RDS")
+```
+
+```{r}
+df_surv_long <- df_surv%>%
+                select(p_id,dt_bl_complete, m3_date_completed__r2, m6_date_completed__r3, m18_dt_complete__r4)%>%
+                pivot_longer(dt_bl_complete:m18_dt_complete__r4, names_to = "var",values_to = "date")%>%
+                  mutate(round = case_when(
+                    var=="dt_bl_complete"~"r1",
+                    var=="m3_date_completed__r2"~"r2",
+                    var=="m6_date_completed__r3"~"r3",
+                    var=="m18_dt_complete__r4"~"r4"
+                  ))%>%
+                  filter(round!="r1")%>%
+                  select(-var)
+
+last_dose <- df_behav %>%
+              left_join(df_surv_long%>%filter(round=="r2"), by =c("p_id"="p_id"))%>%
+              mutate(last_dose_r2 = as.Date(ifelse(!is.na(vaccine_dose2_dt__r2),vaccine_dose2_dt__r2,vaccine_dose1_dt__r2), origin = as.Date("1970-01-01")),
+                     daysincelastdose = as.numeric(date-last_dose_r2),
+              d2_2weeks = ifelse(rcvd_vaccine__r2 ==2 &daysincelastdose>14,1,0))
+
+
+
+last_dose <- df_behav %>%
+              left_join(df_surv_long%>%filter(round=="r3"), by =c("p_id"="p_id"))%>%
+              mutate(last_dose_r3 = as.Date(ifelse(!is.na(vaccine_dose2_dt__r3),vaccine_dose2_dt__r3,vaccine_dose1_dt__r3), origin = as.Date("1970-01-01")),
+                     daysincelastdose = as.numeric(date-last_dose_r3),
+              d2_2weeks = ifelse(rcvd_vaccine__r3 ==2 &daysincelastdose>14,1,0))
+                
+```
+
+

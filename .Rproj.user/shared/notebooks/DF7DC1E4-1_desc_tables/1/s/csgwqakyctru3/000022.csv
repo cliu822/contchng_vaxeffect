@@ -1,0 +1,10 @@
+"0","
+vax_worry_round%>%
+  left_join(vax_worry_round%>%group_by(round, variant_worry_cat)%>%
+              dplyr::summarise(tot=sum(n)))%>%
+  mutate(prop = n/tot)%>%
+  select(-n, -tot)%>%
+  pivot_wider(names_from =""vax_cat2"",values_from =""prop"")
+"
+"2","`summarise()` has grouped output by 'round'. You can override using the `.groups` argument."
+"2","Joining with `by = join_by(round, variant_worry_cat)`"

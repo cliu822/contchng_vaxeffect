@@ -1,0 +1,327 @@
+---
+title: "1_desc_figs"
+output: html_document
+date: "2023-08-02"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+*Inputs*: 
+          1) Contact data in long form with various truncation methods in wide form as columns, and both time-varying/time-invariant covariates as columns
+          2) Long form of a joined vaccine exposure (changing) and contact change outcome data frame with various outlier criteria
+*Visualizes*:
+          1)Figure 1
+          2)Supplementary figures for mean contact by time varying covariates of convern for new variants and stringency policy
+
+
+*Output*: Excels where each sheet is a different contact location and truncation method outcome 
+                1) all contacts; 
+                2) work contacts; 
+                3) other contacts;
+                4) home contacts;
+                5) school contacts
+          with the following types of location-specific right censoring to exclude extreme outlier responses unlikely to be accurate:
+                1)Censoring at 100 contact (CoMix);
+                2)Censoring at 99th percentile;
+                3)Censoring at 97.5th percentile;
+                4)Censoring at 95th percentile
+            
+
+## R Markdown
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(meantables)
+library(scales)
+library(purrr)
+library(viridis)
+library(flextable)
+library(RColorBrewer)
+library(gridExtra)
+library(grid)
+library(ggpubr)
+library(cowplot)
+
+df_cont_cov <- readRDS("0_RDSdata/3_cont_long_cov.RDS")
+df_behav <- readRDS("0_RDSdata/2_behavior_r1r2r3r4.RDS") #Wide version of behavior info r1-r4
+vax_cont_long_full <- readRDS("0_RDSdata/3_vax_cont_long_full.RDS")
+
+
+```
+
+### For loop option for creating multiple trajectories by time invariant covariate
+Do for all contacts and 99th percentile cutoff
+Data wrangling
+```{r}
+##Variable re-label
+var_lab <- data.frame(var = c("age_cat1","pol_cat","emp_cat","hh_cat","gender_i","race_eth_i"),
+            var_lab = c("Age group", "Political affiliation","Employment stat","HH size","Gender","Race/ethnicity"))%>%
+            mutate(var_lab = factor(var_lab, 
+                                    levels =  c("Age group","Gender", "Race/ethnicity",
+                                                "HH size","Political affiliation","Employment stat")))
+
+df_cont_cov_long <- df_cont_cov%>%
+                        select(round, p_id, val99_all, age_cat1:emp_cat)%>%                      #Select round, all contacts 99th percentile, covariate 
+                        pivot_longer(cols = age_cat1:emp_cat, names_to="var",values_to="val")%>%
+                    
+                         mutate(val = ifelse(val %in% c("Unknown Pol", "Unknown Emp"), NA_character_,val),
+                                val = factor(val,
+                                                          levels = c("18-24","25-34","35-44","45-54","55-64","65+",
+                                                                     "Female","Male",
+                                                                     "1_Hisp","2_NH-White","3_NH-Black","4_NH-Asian","5_NH-Other",
+                                                                     "1","2-4","5+",
+                                                                     "Rep","Dem","Ind", 
+                                                                     "Emp,out home","Emp,in home","Unemp", NA)))%>%
+                    
+                                       left_join(var_lab)%>%
+        
+                                        rename("value"="val99_all")  ##name change to fit into the plotting stuff
+     
+```
+
+
+```{r}
+##Contact trajectory by time invariant covariate
+##Set color panels
+pal <- c(rev(brewer.pal("Blues", n=9))[c(1,2,3,5,6,7)],
+         brewer.pal("Set1", n=9)[c(1,2)],
+         rev(brewer.pal("GnBu",n=9)[c(4,5,6,7,9)]),
+         brewer.pal("Oranges",n=3),
+         rev(brewer.pal("BuPu",n=9)[c(4,6,9)]),
+         rev(brewer.pal("PuRd",n=9))[c(1,3,6)])
+
+pal_var <- data.frame(pal=pal,
+           var =c(rep("Age group",6),
+                  rep("Gender",2),
+                  rep("Race/ethnicity",5),
+                  rep("HH size", 3),
+                  rep("Political affiliation",3),
+                  rep("Employment stat",3)))
+
+
+cont_cov_list <- split(df_cont_cov_long, df_cont_cov_long$var_lab)
+p <- list()
+
+for(i in 1:6){
+  pal1<- pal_var$pal[which(pal_var$var==names(cont_cov_list)[i])]
+  p[[i]]<-cont_cov_list[[i]]%>%
+            group_by(var_lab,val,round)%>%
+            summarise(mean = mean(value))%>%
+            arrange(var_lab,val)%>%
+            ggplot(aes(x=round, y=mean, color=val))+
+            geom_line(aes(group=as.factor(val),color=as.factor(val)), size=1.2)+
+            geom_point(aes(group=as.factor(val),color=as.factor(val)),size=2.3)+
+            scale_x_discrete(expand = expansion(add = c(0.4,0.4)))+
+            scale_color_manual(values=pal1,na.value="gray91")+
+            theme_bw()+ylim(0,28) +
+            theme(legend.position = c(0.2, 0.78), legend.title=element_blank(),
+                  legend.key.size = unit(0.2, 'cm'), #change legend key size
+                  legend.key.height = unit(0.2, 'cm'), #change legend key height
+                  legend.key.width = unit(0.2, 'cm'),
+                  legend.text=element_text(size=9),
+                  plot.margin=unit(c(0,0,0,0), "cm"),
+                  legend.margin=margin(c(1,1,1,1)),
+                  plot.title = element_text(size = 12))+
+            ggtitle(names(cont_cov_list)[i])+
+            xlab("")+ylab("")
+}
+
+
+png("0_plot/1_contact_trajectories_covariate_v3.png",width=6,height=8, units="in",res=300)
+ grid.arrange(
+  arrangeGrob(grobs = p,
+              #p[[1]],p[[2]],p[[3]],p[[4]],p[[5]],p[[6]],p[[7]],p[[8]],p[[9]],
+             bottom=textGrob("Round"),left=textGrob("Mean contact",rot = 90)))
+dev.off()
+```
+
+
+##Overall contacts by number of vax doses received
+```{r}
+##Geom point with error bars of mean contact by vaccine dose
+p1b<- df_cont_cov%>%
+         filter(round!="r1")%>%             ##Remove round1
+         group_by(vax_cat,round)%>%       
+         summarise(mean = mean(val99_all),  ##Contact outcome is all contact with 99th percentile censorship
+                   n=n(),
+                   sd = sd(val99_all),
+                   min = mean-1.96*(sd/sqrt(n)),
+                   max = mean+1.96*(sd/sqrt(n)))%>%
+         #mutate(vax_cat = factor(vax_cat, levels=c("dose2","dose1","dose0")))%>%
+         ggplot(aes(x=round, color=vax_cat, group=vax_cat))+
+         geom_point(aes(y=mean, size=n), position=position_dodge(width=0.5))+
+         geom_errorbar(aes(ymin = min, ymax=max),width=0.15, size=0.8, position=position_dodge(width=0.5))+
+         scale_radius(range = c(1, 10), breaks=c(0,500,1000,1500,2000), 
+                      guide = guide_legend(override.aes = list(color="gray80")), name="No. participants")+         
+         scale_color_brewer(palette = "YlGnBu",direction=-1, name="Vax dose")+
+         ylim(5,20)+
+         theme_classic()+
+         ggtitle("Contact rates by vaccine doses received")+ylab("Mean contact (log scale)")+xlab("Round")+
+         scale_y_log10()+
+         theme(
+              #legend.title = element_blank(),
+               legend.position = c(0.2, 0.75),
+               legend.spacing = unit(-1, "mm"), 
+               #panel.border = element_rect(colour = "black", fill=NA),
+               #legend.box.background = element_rect(colour = "black"),
+                axis.text = element_text(size = 11),
+                axis.title = element_text(size=11),
+               plot.title = element_text(size = 14),
+               legend.box="horizontal")
+
+```
+
+##Change in vax status eposure categories over time
+```{r}
+ ##Change in vax status between survey rounds
+p1c<- vax_cont_long_full%>%
+                filter(outcome=="val99_all")%>%
+                group_by(round,vax_cat)%>%
+                summarise(n=n())%>%
+                mutate(period = case_when(
+                  round=="r2"~"R1-R2",
+                  round=="r3"~"R2-R3",
+                  round=="r4"~"R3-R4"
+                ),
+                       vax_status = case_when(
+                  vax_cat=="a0_unvax"~"Unvax",
+                  vax_cat=="a1_first_new"~"New 1st dose",
+                  vax_cat=="a2_both_new" ~"New both dose",
+                  vax_cat=="a2_second_new"~"New 2nd dose",
+                  vax_cat=="a3_full_vax"~"Already fully vaxed"
+                    
+                       ))%>%
+                ggplot(aes(x=period, y=n, fill=vax_status))+
+                geom_bar(position="stack", stat="identity", width=0.5)+
+                #scale_fill_manual(values = c("#A1D99B","#FED976","#FFEDA0","#FFFFCC","#FC9272"))+
+                scale_fill_brewer(palette = "YlGnBu")+
+                ggtitle("Distribution of changes in vaccination status")+xlab("")+ylab("No. participants")+
+                coord_flip()+
+                theme_classic()+
+                theme(legend.title=element_blank(),
+                      legend.position = "bottom",
+                      legend.key.size = unit(0.3, 'cm'), #change legend key size
+                                legend.key.height = unit(0.3, 'cm'), #change legend key height
+                                legend.key.width = unit(0.3, 'cm'),
+                                legend.text=element_text(size=10),
+                                axis.text = element_text(size = 11),
+                                legend.margin=margin(c(1,1,1,1)),
+                      plot.title = element_text(size = 14))
+
+vax_cont_long_full%>%
+                filter(outcome=="val99_all")%>%
+                group_by(round,vax_cat)%>%
+                summarise(n=n())%>%
+                mutate(period = case_when(
+                  round=="r2"~"R1-R2",
+                  round=="r3"~"R2-R3",
+                  round=="r4"~"R3-R4"
+                ),
+                       vax_status = case_when(
+                  vax_cat=="a0_unvax"~"Unvax",
+                  vax_cat=="a1_first_new"~"New 1st dose",
+                  vax_cat=="a2_both_new" ~"New both dose",
+                  vax_cat=="a2_second_new"~"New 2nd dose",
+                  vax_cat=="a3_full_vax"~"Already fully vaxed"
+                    
+                       ))%>%
+  mutate(prop = n/2403)
+```
+
+##Arrange all figure 1
+```{r}
+p1 <- ggarrange(p[[1]],p[[2]],p[[3]],p[[4]],p[[5]],p[[6]],ncol=2,nrow=3)
+p1<- annotate_figure(p1,bottom=text_grob("Round"),left=text_grob("Mean contact",rot = 90))
+
+p2 <- plot_grid(p1b,p1c, ncol=1,align="v")
+png("0_plot/1_fig1_v2.png",width=13,height=8, units="in",res=600)
+#grid.arrange(p1,p8,p10,ncol=2,nrow=2,
+#             layout_matrix=rbind(c(1,2),c(1,3)))
+plot_grid(p1,p2, align="h")
+dev.off()
+```
+
+##Supplementary figures on contacts rates over time, by time-varying covariates
+### By level of concern for new variants
+```{r}
+##Geom point with error bars of mean contact by concern for variant
+
+pal2<- brewer.pal(n=9,"BuGn")[c(3,5,6,7,9)]
+ps1a <- df_cont_cov%>%
+         filter(round!="r1")%>%             ##Remove round1
+         filter(!is.na(variant_worry_cat))%>% ##Remove nonresponses
+         group_by(variant_worry_cat,round)%>%       
+         summarise(mean = mean(val99_all),
+                         n=n(),
+                         sd = sd(val99_all),
+                         min = mean-1.96*(sd/sqrt(n)),
+                         max = mean+1.96*(sd/sqrt(n))
+                         )%>%
+               filter(n>=40)%>%
+               ggplot(aes(x=round, color=variant_worry_cat, group=variant_worry_cat))+
+               geom_point(aes(y=mean, size=n), position=position_dodge(width=0.7))+
+               geom_errorbar(aes(ymin = min, ymax=max),width=0.15, size=0.8, position=position_dodge(width=0.7))+
+               scale_radius(range = c(1, 10), breaks=c(0,250,500,750,1000), 
+                            guide = guide_legend(override.aes = list(color="gray80")), name="No. participants")+         
+               scale_color_manual(values = pal2, name="Change concern")+
+               ylim(5,25)+
+              theme_classic()+
+               ggtitle("Contact rates by changing concern for new variants")+ylab("Mean contact")+xlab("Round")+
+               theme(
+                    #legend.title = element_blank(),
+                     legend.position = c(0.25, 0.73),
+                     legend.spacing = unit(-1, "mm"), 
+                     #panel.border = element_rect(colour = "black", fill=NA),
+                     #legend.box.background = element_rect(colour = "black"),
+                      axis.text = element_text(size = 11),
+                      axis.title = element_text(size=11),
+                     plot.title = element_text(size = 14),
+                     legend.box="horizontal")
+  
+
+png("0_plot/2_meancont_varconcern.png",width=8,height=5, units="in",res=300)
+ps1a
+dev.off()
+
+```
+
+### By Oxford stringency index at time of survey completion
+```{r}
+ps1b <-  df_cont_cov%>%
+            filter(!string_cat=="High")%>%
+            group_by(string_cat,round)%>%
+            summarise(mean = mean(val99_all),
+                   n=n(),
+                   sd = sd(val99_all),
+                   min = mean-1.96*(sd/sqrt(n)),
+                   max = mean+1.96*(sd/sqrt(n))
+                   )%>%
+         #mutate(vax_cat = factor(vax_cat, levels=c("dose2","dose1","dose0")))%>%
+         ggplot(aes(x=round, color=string_cat, group=string_cat))+
+         geom_point(aes(y=mean, size=n), position=position_dodge(width=0.7))+
+         geom_errorbar(aes(ymin = min, ymax=max),width=0.15, size=0.8, position=position_dodge(width=0.7))+
+         scale_radius(range = c(1, 10), breaks=c(0,250,500,750,1000), 
+                      guide = guide_legend(override.aes = list(color="gray80")), name="No. participants")+         
+         scale_color_brewer(palette = "PuBuGn", name="Stringency")+
+         ylim(2,18)+theme_classic()+
+         ggtitle("Contact rates by stringency of state-level COVID-19 policy at time of survey")+ylab("Mean contact")+xlab("Round")+
+         theme(
+              #legend.title = element_blank(),
+           legend.position = c(0.85, 0.23),
+               legend.spacing = unit(-1, "mm"), 
+               #panel.border = element_rect(colour = "black", fill=NA),
+               #legend.box.background = element_rect(colour = "black"),
+                axis.text = element_text(size = 11),
+                axis.title = element_text(size=11),
+               plot.title = element_text(size = 14),
+               legend.box="horizontal")
+
+png("0_plot/2_meancont_string.png",width=8,height=5, units="in",res=300)
+ps1b
+dev.off()
+```
+
+

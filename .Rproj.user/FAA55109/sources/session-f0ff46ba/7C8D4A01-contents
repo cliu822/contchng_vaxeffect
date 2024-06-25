@@ -1,0 +1,349 @@
+##Script to make the long data frame joined between vax category and number of contacts per round and also for different covariates
+##Including OSI, county-level vax coverage etc
+
+## Additional data cleaning stuff for covaraites/baseline characteristics
+
+##Baseline time invariant variables
+df_base <- readRDS("0_RDSdata/0_baseline_characteristics.RDS") #Wide version baseline characteristics
+df_base_an <- readRDS("0_RDSdata/99_r1_analytical.RDS") #Wide version baseline with imputation
+df_hh_enum <- readRDS("0_RDSdata/0_hh_enum.RDS") #Wide version hh enumeration
+df_class <- readRDS("0_RDSdata/0_lca_class.RDS")
+
+df_contact_long <- readRDS("0_RDSdata/1_contact_long_r1r2r3r4.RDS") #Long version of all contact at each location r1-r4
+df_surv_dt <- readRDS("0_RDSdata/0_surveydates_r1r2r3r4.RDS") #Wide version survey dates
+
+##Time-varying covariates
+df_behav <- readRDS("0_RDSdata/2_behavior_r1r2r3r4.RDS") #Wide version of behavior info r1-r4
+string <- readRDS("0_RDSdata/0_oxford_stringency.RDS") ##OSI over time
+vax_wk_co <- readRDS("0_RDSdata/0_covid_vax_wk_co.RDS")
+
+
+df_base <- df_base %>% 
+                mutate(pol_cat = ifelse(is.na(pol_cat),"unk",pol_cat)) %>%
+                
+                left_join(df_base_an %>% select(p_id, GENDER_I, RACE_ETHNICITY_I)) %>%  ##Join in imputed variables
+                left_join(df_hh_enum %>% select(p_id, hh_num)) %>%                      ##Join in household size number
+                left_join(df_class%>%select(p_id, lca4_full))%>%                        ##Join in LCA class
+                
+                mutate(gender_i = ifelse(GENDER_I==1, "Male","Female"),
+                
+                        race_eth_i = case_when(
+                                        RACE_ETHNICITY_I == 1 ~ "1_Hisp",
+                                        RACE_ETHNICITY_I == 2 ~ "2_NH-White",
+                                        RACE_ETHNICITY_I == 3 ~ "3_NH-Black",
+                                        RACE_ETHNICITY_I == 4 ~ "4_NH-Asian",
+                                        RACE_ETHNICITY_I == 5 ~ "5_NH-Other"),
+                        hh_cat = case_when(
+                                        hh_num==1 ~ "1",
+                                        hh_num<=4 ~"2-4",
+                                        hh_num >4 ~"5+"),
+                
+                        comorb_cat = case_when(
+                                        comorb_cat == 1 ~"Yes",
+                                        comorb_cat == 0 ~ "No"),
+                        pol_cat = case_when(
+                                        pol_cat =="dem"~"Dem",
+                                        pol_cat == "rep"~"Rep",
+                                        pol_cat =="ind"~"Ind",
+                                        pol_cat == "unk"~"Unknown Pol"),
+                
+                        emp_cat = case_when(
+                                        is.na(emp_cat)~"Unknown Emp",
+                                        emp_cat == "unk"~"Unknown Emp",
+                                        emp_cat == "no_emp"~"Unemp",
+                                        emp_cat == "emp_noleave"~"Emp,in home",
+                                        emp_cat == "emp_leave" ~"Emp,out home"),
+                
+                       lca4_full=case_when(lca4_full ==1 ~"High",
+                                           lca4_full ==2 ~"Med-high",
+                                           lca4_full ==3 ~"Med-low",
+                                           lca4_full ==4 ~"Low"),
+                       lca4_full = factor(lca4_full, levels=c("High","Med-high","Med-low","Low")))%>%
+                
+                        select(-GENDER_I,-RACE_ETHNICITY_I, -hh_num)
+
+
+## categorize vax status of 2403 participants based on change between R1 and R2, R2  and R3, R3 and R4
+vaxcat <- df_behav%>%
+  
+  select(p_id,rcvd_vaccine__r2,vaccine_dose1_dt__r2,vaccine_dose2_dt__r2,
+         rcvd_vaccine__r3,vaccine_dose1_dt__r3,vaccine_dose2_dt__r3,
+         rcvd_vaccine__r4,vaccine_recent_dt__r4)%>%
+  
+  
+  left_join(df_surv_dt %>%select(p_id,dt_bl_complete, m3_date_completed__r2, m6_date_completed__r3,  m18_dt_complete__r4))%>%
+  
+  mutate(vax_cat_r2 = case_when(
+    rcvd_vaccine__r2 == 0 ~ "a0_unvax",  ##If unvaxed at end period
+    rcvd_vaccine__r2 ==1  ~"a1_first_new", ## If first dose in period
+    rcvd_vaccine__r2 ==2 ~ "a2_both_new"),  ##If one and two dose in period
+    
+    vax_cat_r3 = case_when(
+      rcvd_vaccine__r2 ==2 ~ "a3_full_vax",
+      rcvd_vaccine__r3 == 0 ~ "a0_unvax",
+      rcvd_vaccine__r3 ==1  ~"a1_first_new",
+      rcvd_vaccine__r3 ==2 & vaccine_dose1_dt__r3<= m3_date_completed__r2~ "a2_second_new",
+      rcvd_vaccine__r3 ==2 ~"a2_both_new"),
+    
+    vax_cat_r4 = case_when(
+      rcvd_vaccine__r2 ==2 ~"a3_full_vax",
+      rcvd_vaccine__r3 ==2 ~ "a3_full_vax",
+      rcvd_vaccine__r4 == 0 ~ "a0_unvax",
+      rcvd_vaccine__r4 ==1  ~"a1_first_new",
+      rcvd_vaccine__r4 ==2 & rcvd_vaccine__r3==1~ "a2_second_new",
+      rcvd_vaccine__r4 ==2|rcvd_vaccine__r4==3 ~"a2_both_new",
+      rcvd_vaccine__r4==4 ~"a3_full_vax"))
+
+
+
+vaxcat <- vaxcat%>%mutate(
+            days_d2__r2 = as.numeric(m3_date_completed__r2-vaccine_dose2_dt__r2),
+            days_d2__r3 = as.numeric(m6_date_completed__r3-vaccine_dose2_dt__r3),
+            days_drec__r4 = as.numeric(m18_dt_complete__r4  -vaccine_recent_dt__r4))%>%
+  
+            mutate(vaxcat2_r2  = case_when(
+                           vax_cat_r2=="a2_both_new"&days_d2__r2>14 ~"a2_both_new_14",
+                           vax_cat_r2=="a2_both_new"&days_d2__r2<=14~"a2_both_new_0",
+                           TRUE ~vax_cat_r2
+            ),
+                  vaxcat2_r3 = case_when(
+                            vax_cat_r3=="a2_both_new"&days_d2__r3>14 ~"a2_both_new_14",
+                            vax_cat_r3=="a2_both_new"&days_d2__r3<=14~"a2_both_new_0",
+                            vax_cat_r3=="a2_second_new"&days_d2__r3>14 ~"a2_second_new_14",
+                            vax_cat_r3=="a2_second_new"&days_d2__r3<=14~"a2_second_new_0",
+                            TRUE~vax_cat_r3
+                  ),
+                  vaxcat2_r4 = case_when(
+                            vax_cat_r4=="a2_both_new"&days_drec__r4>14&rcvd_vaccine__r4<=2 ~"a2_both_new_14",
+                            vax_cat_r4=="a2_both_new"&days_drec__r4<=14&rcvd_vaccine__r4<=2~"a2_both_new_0",
+                            vax_cat_r4=="a2_second_new"&days_drec__r4>14&rcvd_vaccine__r4<=2 ~"a2_second_new_14",
+                            vax_cat_r4=="a2_second_new"&days_drec__r4<=14&rcvd_vaccine__r4<=2~"a2_second_new_0",
+                            vax_cat_r4=="a2_both_new"&rcvd_vaccine__r4>2 ~"a2_both_new_14",
+                            vax_cat_r4=="a2_second_new"&rcvd_vaccine__r4>2 ~"a2_second_new_14",
+                            TRUE~vax_cat_r4
+            ))
+
+##Long form of vax
+vax_long <- vaxcat%>%
+  select(p_id, vax_cat_r2:vax_cat_r4)%>%
+  pivot_longer(vax_cat_r2:vax_cat_r4, names_to ="vax_round", values_to="vax_cat")%>%
+  
+  mutate(round = case_when(
+    vax_round == "vax_cat_r2"~"r2",
+    vax_round == "vax_cat_r3"~"r3",
+    vax_round == "vax_cat_r4"~"r4"
+  ))%>%
+  
+  ##Recategorization of vax into four categories
+  mutate(vax_cat2 = ifelse(vax_cat == "a2_both_new"|vax_cat=="a2_second_new","a2_full_new",vax_cat))%>%
+  
+  left_join(df_base %>% select(p_id, age_cat1, age_cat2,pol_cat,emp_cat, comorb_cat, gender_i, race_eth_i,hh_cat, lca4_full, income))
+  
+##Time varying covariates
+##Get state stringency index at time of survey completion
+string_long <- df_surv_dt%>% dplyr::select(p_id, m3_date_completed__r2, m6_date_completed__r3, m18_dt_complete__r4)%>%
+  pivot_longer(cols=m3_date_completed__r2:m18_dt_complete__r4, names_to="var", values_to="date")%>%
+  mutate(round = case_when(
+    var=="m3_date_completed__r2"~"r2",
+    var=="m6_date_completed__r3"~"r3",
+    var=="m18_dt_complete__r4"~"r4"
+  ))%>%
+  left_join(df_base %>%dplyr::select(p_id,state), by = c("p_id"="p_id"))
+
+string_long <- string_long %>% 
+  left_join(string%>%dplyr::select(date, state, StringencyIndex, string_cat),
+            by = c("date"="date","state"="state"))%>%
+  mutate(string_cat = as.factor(string_cat))
+
+##Time-changing concern for variant
+concern_long<- df_behav%>%dplyr::select(p_id,variant_worry__r2,variant_worry__r3, variant_worry__r4)%>%
+  pivot_longer(cols=variant_worry__r2:variant_worry__r4,names_to="var",values_to="variant_worry")%>%
+  mutate(round = substr(var,16,17),
+         variant_worry_cat = case_when(
+                              variant_worry ==1 ~"Increased greatly",
+                              variant_worry ==2 ~"Increased slightly",
+                              variant_worry ==3 ~"No change",
+                              variant_worry ==4 ~ "Decreased slightly",
+                              variant_worry ==5 ~ "Decreased greatly"),
+          variant_worry_cat = factor(variant_worry_cat, 
+                                     levels = c("Increased greatly","Increased slightly","No change","Decreased slightly","Decreased greatly")))
+
+##Time-varying community-level vaccine coverage
+vax_comm_long <- df_surv_dt%>% dplyr::select(p_id, m3_date_completed__r2, m6_date_completed__r3, m18_dt_complete__r4)%>%
+  pivot_longer(cols=m3_date_completed__r2:m18_dt_complete__r4, names_to="var", values_to="date")%>%
+  mutate(round = case_when(
+    var=="m3_date_completed__r2"~"r2",
+    var=="m6_date_completed__r3"~"r3",
+    var=="m18_dt_complete__r4"~"r4"
+  ))%>%
+  left_join(df_base %>%dplyr::select(p_id,FIPS), by = c("p_id"="p_id")) %>%
+  mutate(yr_wk =format(date,"%Y-%W"))%>%
+  
+  left_join(vax_wk_co %>%select(yr_wk, FIPS, Series_Complete_Pop_Pct, Series_Complete_18PlusPop_Pct),
+            by = c("yr_wk"="yr_wk","FIPS"="FIPS")) %>%
+  
+  mutate(vax_comm_cat_all = case_when(
+                              is.na(Series_Complete_Pop_Pct)~NA_character_,
+                              Series_Complete_Pop_Pct<=20~"0%-20%",
+                              Series_Complete_Pop_Pct<=40~"21%-40%",
+                              Series_Complete_Pop_Pct<=60~"41-60%",
+                              Series_Complete_Pop_Pct<=80~"61%-80%",
+                              Series_Complete_Pop_Pct<=100~"81%-100%"),
+         
+         vax_comm_cat_18 = case_when(
+                             is.na(Series_Complete_18PlusPop_Pct)~NA_character_,
+                             Series_Complete_18PlusPop_Pct<=20~"0%-20%",
+                             Series_Complete_18PlusPop_Pct<=40~"21%-40%",
+                             Series_Complete_18PlusPop_Pct<=60~"41%-60%",
+                             Series_Complete_18PlusPop_Pct<=80~"61%-80%",
+                             Series_Complete_18PlusPop_Pct<=100~"81%-100%")
+         )
+
+
+
+##Join in time varying covariates
+vax_long <- vax_long%>%left_join(string_long%>%select(p_id, round, StringencyIndex, string_cat), by = c("p_id"="p_id","round"="round"))%>%
+                left_join(concern_long%>%select(p_id,round,variant_worry,variant_worry_cat), by = c("p_id"="p_id","round"="round"))%>%
+                left_join(vax_comm_long%>%select(p_id,round,Series_Complete_Pop_Pct:vax_comm_cat_18), by = c("p_id"="p_id","round"="round"))
+
+
+###Data truncations for contacts
+##Combine physical and nonphysical and pivot into wide
+df_contact_wide <- df_contact_long%>%
+                        filter(type!="all")%>%
+                        group_by(loc,round,p_id)%>%
+                        summarise(value=sum(value))%>%
+                        pivot_wider(names_from = "loc", values_from ="value")%>%
+                        rename("all_orig"="all")%>%
+                        rename("home_orig"="home")%>%
+                        rename("other_orig"="other")%>%
+                        rename("school_orig"="school")%>%
+                        rename("work_orig"="work")
+
+##Get the contact values for 95th and 97.5 and 99th percentile
+outliers <- df_contact_wide%>%
+                select(-all_orig)%>%
+                pivot_longer(cols=home_orig:work_orig, names_to= "var", values_to="value")%>%
+                mutate(val100 = ifelse(value>100,1,0))%>%
+                group_by(round, var)%>%
+                summarise(med = median(value),
+                          mean =mean(value),
+                          hi95 = quantile(value, probs=0.95),
+                          hi975= quantile(value, probs=0.975),
+                          hi99 = quantile(value, probs=0.99),
+                          n100 = sum(val100))
+write.csv(outliers,"0_tab/outlier_cutoffs.csv")
+  
+
+##Figure out criteria for different location specific censoring
+##COntact wide form with different censoring
+df_contact_locwide <- df_contact_wide%>%
+                                select(-all_orig)%>%
+                                pivot_longer(cols=home_orig:work_orig, names_to= "var", values_to="value")%>%
+                                left_join(outliers, by =c("round"="round","var"="var"))%>%
+                                mutate(var = gsub("_orig","",var),
+                                       val95 = ifelse(value>=hi95,hi95,value),
+                                       val975= ifelse(value>=hi975,hi975, value),
+                                       val99 = ifelse(value>=hi99, hi99, value),
+                                       val100 = ifelse(value>=100,100,value))%>%
+                  rename("orig"="value")%>%
+                  select(round,p_id,var,orig,val95,val975,val99,val100)%>%
+                  pivot_wider(names_from="var",values_from=c("orig","val95","val975","val99","val100"))
+
+df_contact_locwide <- df_contact_locwide %>%
+                    mutate(orig_all = rowSums(across(orig_home:orig_work)),
+                          val95_all = rowSums(across(val95_home:val95_work)),
+                          val975_all= rowSums(across(val975_home:val975_work)),
+                          val99_all = rowSums(across(val99_home:val99_work)),
+                          val100_all = rowSums(across(val100_home:val100_work)))
+
+##Get state stringency index at time of survey completion including round1
+string_long1 <- df_surv_dt%>% dplyr::select(p_id, dt_bl_complete,m3_date_completed__r2, m6_date_completed__r3, m18_dt_complete__r4)%>%
+  pivot_longer(cols=dt_bl_complete:m18_dt_complete__r4, names_to="var", values_to="date")%>%
+  mutate(round = case_when(
+    var=="dt_bl_complete"~"r1",
+    var=="m3_date_completed__r2"~"r2",
+    var=="m6_date_completed__r3"~"r3",
+    var=="m18_dt_complete__r4"~"r4"
+  ))%>%
+  left_join(df_base %>%dplyr::select(p_id,state), by = c("p_id"="p_id"))
+
+string_long1 <- string_long1 %>% 
+  left_join(string%>%dplyr::select(date, state, StringencyIndex, string_cat),
+            by = c("date"="date","state"="state"))%>%
+  mutate(string_cat =
+           case_when(string_cat==1 ~"Low",
+                     string_cat==2 ~"Med-low",
+                     string_cat==3 ~"Med-high",
+                     string_cat==4 ~"High"),
+         string_cat = factor(string_cat, levels = c("High","Med-high","Med-low","Low")))
+
+df_cont_cov <- df_contact_locwide%>%
+                  left_join(df_base %>% select(p_id, age_cat1,gender_i,race_eth_i,hh_cat, pol_cat,emp_cat, comorb_cat,lca4_full, income))%>% ##Join time invariant covariates
+                  left_join(string_long1%>%select(p_id, round, StringencyIndex, string_cat), by = c("p_id"="p_id","round"="round"))%>% #Join time variant covariates
+                  left_join(concern_long%>%select(p_id,round,variant_worry,variant_worry_cat), by = c("p_id"="p_id","round"="round"))%>%
+                  left_join(vax_comm_long%>%select(p_id,round,Series_Complete_Pop_Pct,Series_Complete_18PlusPop_Pct, vax_comm_cat_all, vax_comm_cat_18),by = c("p_id"="p_id","round"="round"))
+
+##Join in simple form of number of vax doses received at time of survey
+vax_simp_long <- df_behav%>%
+  select(p_id, rcvd_vaccine__r2, rcvd_vaccine__r3,rcvd_vaccine__r4)%>%
+  pivot_longer(cols=rcvd_vaccine__r2:rcvd_vaccine__r4, names_to ="vax", values_to="dose")%>%
+  mutate(round=gsub("rcvd_vaccine__","",vax),
+         dose=ifelse(dose>=2,2,dose),
+         dose=as.factor(dose),
+         vax_cat = paste("dose",dose, sep=""))
+
+df_cont_cov <- df_cont_cov%>%
+          left_join(vax_simp_long%>%select(-dose,-vax))%>%##Join simplified vax dose
+  mutate(income_cat = case_when(
+    income ==9 ~NA_character_,
+    income%in% c(1,2)~"0_24000",
+    income%in% c(3,4)~"25000_74000",
+    income%in% c(5,6)~"75000_149000",
+    income%in% c(7,8)~"150000"
+  ),
+  income_cat = factor(income_cat, levels = c("0_24000","25000_74000","75000_149000","150000")))
+
+saveRDS(df_cont_cov, "0_RDSdata/3_cont_long_cov.RDS")
+
+
+##Calculate change in contacts by other, work and all
+df_cont_chng <- df_contact_locwide%>%
+                        pivot_longer(cols=orig_home:val100_all, names_to = "var",values_to="value")%>%
+                        pivot_wider(names_from = "round",values_from = "value")%>%
+                        mutate(r1r2_chng = r2-r1,
+                               r2r3_chng = r3-r2,
+                               r3r4_chng = r4-r3)%>%
+                      select(-r1:-r4)%>%
+                      rename("r2"="r1r2_chng",
+                             "r3"="r2r3_chng",
+                             "r4"="r3r4_chng")%>%
+                      pivot_longer(cols=r2:r4,names_to="round",values_to = "value")%>%
+                      pivot_wider(names_from = "var",values_from = "value")
+
+###Join contact change with vaxlong
+vax_cont_long_full<-vax_long%>%left_join(df_cont_chng, by =c("p_id"="p_id","round"="round"))%>%
+                    pivot_longer(cols=orig_home:val100_all, names_to="outcome",values_to = "cont_chng")
+
+##Join in baseline contacts for each location/censoring type
+cont_base <- df_contact_locwide%>%
+                filter(round=="r1")%>%
+                pivot_longer(cols=orig_home:val100_all, names_to="outcome",values_to = "base_cont")%>%
+                ungroup()%>%
+                select(-round)
+
+vax_cont_long_full <- vax_cont_long_full%>%
+                      mutate(income_cat = case_when(
+                                            income ==9 ~NA_character_,
+                                            income%in% c(1,2)~"0_24000",
+                                            income%in% c(3,4)~"25000_74000",
+                                            income%in% c(5,6)~"75000_149000",
+                                            income%in% c(7,8)~"150000"
+                      ),
+                      income_cat = factor(income_cat, levels = c("0_24000","25000_74000","75000_149000","150000")))
+
+vax_cont_long_full <- vax_cont_long_full%>%left_join(cont_base, by = c("p_id"="p_id", "outcome"="outcome"))
+
+saveRDS(vax_cont_long_full,"0_RDSdata/3_vax_cont_long_full.RDS")
+
+

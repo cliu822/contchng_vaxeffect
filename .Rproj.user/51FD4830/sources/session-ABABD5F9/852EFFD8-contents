@@ -1,0 +1,400 @@
+library(openxlsx)
+library(lme4)
+library(dplyr)
+library(tidyr)
+df_behav <- readRDS("0_RDSdata/2_behavior_r1r2r3r4.RDS") #Wide version of behavior info r1-r4
+df_base <- readRDS("0_RDSdata/0_baseline_characteristics.RDS") #Wide version baseline characteristics
+df_surv_dt <- readRDS("0_RDSdata/0_surveydates_r1r2r3r4.RDS") #Wide version survey dates
+string <- readRDS("0_RDSdata/0_oxford_stringency.RDS")
+df_class <- readRDS("0_RDSdata/0_lca_class.RDS")
+
+##Get state stringency index at time of survey completion
+string_long <- df_surv_dt%>% dplyr::select(p_id, m3_date_completed__r2, m6_date_completed__r3, m18_dt_complete__r4)%>%
+  pivot_longer(cols=m3_date_completed__r2:m18_dt_complete__r4, names_to="var", values_to="date")%>%
+  mutate(round = case_when(
+          var=="m3_date_completed__r2"~"r2",
+          var=="m6_date_completed__r3"~"r3",
+          var=="m18_dt_complete__r4"~"r4"
+  ))%>%
+  left_join(df_base %>%dplyr::select(p_id,state), by = c("p_id"="p_id"))
+
+string_long <- string_long %>% 
+              left_join(string%>%dplyr::select(date, state, StringencyIndex, string_cat),
+                        by = c("date"="date","state"="state"))%>%
+              mutate(string_cat = as.factor(string_cat))
+
+behav_long<- df_behav%>%dplyr::select(p_id,variant_worry__r2,variant_worry__r3, variant_worry__r4)%>%
+              pivot_longer(cols=variant_worry__r2:variant_worry__r4,names_to="var",values_to="variant_worry")%>%
+             mutate(round = substr(var,16,17)) %>%
+             mutate(variant_worry = as.factor(variant_worry))
+
+
+vax_cont_long <- readRDS("0_RDSdata/3_vax_cont_long.RDS")%>%
+                left_join(string_long%>%select(p_id, round, StringencyIndex, string_cat), by = c("p_id"="p_id","round"="round"))%>%
+                left_join(behav_long%>%select(p_id,round,variant_worry), by = c("p_id"="p_id","round"="round"))%>%
+                left_join(df_class, by = c("p_id"="p_id"))
+
+vax_cont_long_wk <- readRDS("0_RDSdata/3_vax_cont_long_wk.RDS")%>%
+  left_join(string_long%>%select(p_id, round, StringencyIndex, string_cat), by = c("p_id"="p_id","round"="round"))%>%
+  left_join(behav_long%>%select(p_id,round,variant_worry), by = c("p_id"="p_id","round"="round"))%>%
+  left_join(df_class, by = c("p_id"="p_id"))
+
+vax_cont_long_oth <- readRDS("0_RDSdata/3_vax_cont_long_oth.RDS")%>%
+  left_join(string_long%>%select(p_id, round, StringencyIndex, string_cat), by = c("p_id"="p_id","round"="round"))%>%
+  left_join(behav_long%>%select(p_id,round,variant_worry), by = c("p_id"="p_id","round"="round"))%>%
+  left_join(df_class, by = c("p_id"="p_id"))
+
+
+##Function to get coefficients, standard error, tvalue and confidence interval
+mod_res <- function(x){
+  d1 <- as.data.frame(summary(x)$coefficients)
+  d2 <- as.data.frame(confint(x))
+  colnames(d2)<-c("lo_2.5","hi_97.5")
+  d1$cat <- row.names(d1)
+  d2$cat <- row.names(d2)
+  d1 <- d1%>%left_join(d2, keep=F)
+  d1<- d1%>%mutate_if(is.numeric, round,2)%>%
+            mutate(est = paste(Estimate,"(",lo_2.5,"-",hi_97.5,")",sep=""))
+  print(d1)
+}
+
+
+# Modeling change in all contacts
+## Random effects linear mixed models
+### Univariate
+
+res_list <- list()
+res_list[[1]] <- lmer(cont_chng~vax_cat+(1|p_id),data = vax_cont_long)
+res_list[[2]] <- lmer(cont_chng ~ round+(1|p_id), data = vax_cont_long)
+res_list[[3]] <- lmer(cont_chng ~ age_cat1+(1|p_id), data = vax_cont_long)
+res_list[[4]] <- lmer(cont_chng~ race_eth_i+(1|p_id),data = vax_cont_long)
+res_list[[5]] <- lmer(cont_chng~ pol_cat+(1|p_id),data = vax_cont_long)
+res_list[[6]] <- lmer(cont_chng~ hh_cat+(1|p_id),data = vax_cont_long)
+res_list[[7]] <- lmer(cont_chng~ gender_i+(1|p_id),data = vax_cont_long)
+res_list[[8]] <- lmer(cont_chng~ comorb_cat+(1|p_id),data = vax_cont_long)
+res_list[[9]] <- lmer(cont_chng~ emp_cat+(1|p_id),data = vax_cont_long)
+res_list[[10]]<- lmer(cont_chng~ all_cont_r1+(1|p_id), data = vax_cont_long)
+res_list[[11]]<-lmer(cont_chng~variant_worry+(1|p_id), data = vax_cont_long)
+res_list[[12]]<-lmer(cont_chng~StringencyIndex+(1|p_id), data=vax_cont_long)
+res_list[[13]]<-lmer(cont_chng~lca4_full+(1|p_id), data=vax_cont_long)
+#res_list[[14]]<-lmer(cont_chng~string_cat+(1|p_id), data=vax_cont_long)
+#res_list[[15]]<-lmer(cont_chng~lca3_mod2+(1|p_id), data=vax_cont_long)
+#res_list[[16]]<-lmer(cont_chng~lca4_full+(1|p_id), data=vax_cont_long)
+#res_list[[17]]<-lmer(cont_chng~lca4_mod2+(1|p_id), data=vax_cont_long)
+#res_list[[18]]<-lmer(cont_chng~lca5_full+(1|p_id), data=vax_cont_long)
+#res_list[[19]]<-lmer(cont_chng~lca5_mod2+(1|p_id), data=vax_cont_long)
+
+res_uni<- lapply(res_list,mod_res)
+tab_uni <-do.call(rbind, res_uni)
+
+
+##Bivariate
+res_list2 <- list()
+res_list2[[1]] <- lmer(cont_chng~vax_cat+(1|p_id),data = vax_cont_long)
+res_list2[[2]] <- lmer(cont_chng ~round+vax_cat+(1|p_id), data = vax_cont_long)
+res_list2[[3]] <- lmer(cont_chng ~age_cat1+vax_cat+(1|p_id), data = vax_cont_long)
+res_list2[[4]] <- lmer(cont_chng~ race_eth_i+vax_cat+(1|p_id),data = vax_cont_long)
+res_list2[[5]] <- lmer(cont_chng~ pol_cat+vax_cat+(1|p_id),data = vax_cont_long)
+res_list2[[6]] <- lmer(cont_chng~ hh_cat+vax_cat+(1|p_id),data = vax_cont_long)
+res_list2[[7]] <- lmer(cont_chng~ gender_i+vax_cat+(1|p_id),data = vax_cont_long)
+res_list2[[8]] <- lmer(cont_chng~ comorb_cat+vax_cat+(1|p_id),data = vax_cont_long)
+res_list2[[9]] <- lmer(cont_chng~ emp_cat+vax_cat+(1|p_id),data = vax_cont_long)
+res_list2[[10]] <- lmer(cont_chng~ all_cont_r1+vax_cat+(1|p_id),data = vax_cont_long)
+res_list2[[11]]<-lmer(cont_chng~variant_worry+vax_cat+(1|p_id), data = vax_cont_long)
+res_list2[[12]]<-lmer(cont_chng~StringencyIndex+vax_cat+(1|p_id), data=vax_cont_long)
+res_list2[[13]]<-lmer(cont_chng~string_cat+vax_cat+(1|p_id), data=vax_cont_long)
+res_list[[14]]<-lmer(cont_chng~lca3_full+vax_cat+(1|p_id), data=vax_cont_long)
+res_list[[15]]<-lmer(cont_chng~lca3_mod2+vax_cat+(1|p_id), data=vax_cont_long)
+res_list[[16]]<-lmer(cont_chng~lca4_full+vax_cat+(1|p_id), data=vax_cont_long)
+res_list[[17]]<-lmer(cont_chng~lca4_mod2+vax_cat+(1|p_id), data=vax_cont_long)
+res_list[[18]]<-lmer(cont_chng~lca5_full+vax_cat+(1|p_id), data=vax_cont_long)
+res_list[[19]]<-lmer(cont_chng~lca5_mod2+vax_cat+(1|p_id), data=vax_cont_long)
+
+res_uni2<- lapply(res_list2,mod_res)
+
+write.xlsx(res_uni2, "0_tab/bivariate_chng_allcont.xlsx")
+
+##Multivariate models
+#mod_pars1<- lmer(cont_chng ~ vax_cat+round+(1|p_id), data = vax_cont_long)
+#mod_pars1 <- lmer(cont_chng~vax_cat+string_cat+variant_worry+(1|p_id), data=vax_cont_long)
+#mod_pars2 <- lmer(cont_chng ~ vax_cat+round+all_cont_r1+(1|p_id), data = vax_cont_long)
+#mod_full1<- lmer(cont_chng ~ vax_cat+string_cat+variant_worry+age_cat1+pol_cat+hh_cat+emp_cat+(1|p_id), data = vax_cont_long)
+#mod_full2<- lmer(cont_chng ~ vax_cat+string_cat+variant_worry+age_cat1+pol_cat+hh_cat+emp_cat+all_cont_r1+(1|p_id), data = vax_cont_long)
+#mod_pars3 <- lmer(cont_chng ~ vax_cat+all_cont_r1+(1|p_id), data = vax_cont_long)
+#mod_full3<- lmer(cont_chng ~ vax_cat+age_cat1+pol_cat+hh_cat+emp_cat+all_cont_r1+(1|p_id), data = vax_cont_long)
+
+mod_pars1 <- lmer(cont_chng~vax_cat+StringencyIndex+variant_worry+(1|p_id), data=vax_cont_long)
+mod_pars1a <- lmer(cont_chng~vax_cat+string_cat+variant_worry+(1|p_id), data=vax_cont_long)
+
+mod_pars2 <- lmer(cont_chng~vax_cat+StringencyIndex+variant_worry+all_cont_r1+(1|p_id), data=vax_cont_long)
+mod_full1<- lmer(cont_chng ~ vax_cat+StringencyIndex+variant_worry+age_cat1+pol_cat+hh_cat+emp_cat+(1|p_id), data = vax_cont_long)
+mod_full2<- lmer(cont_chng ~ vax_cat+StringencyIndex+variant_worry+age_cat1+pol_cat+hh_cat+emp_cat+all_cont_r1+(1|p_id), data = vax_cont_long)
+mod_full3<- lmer(cont_chng ~ vax_cat+StringencyIndex+variant_worry+age_cat1+pol_cat+hh_cat+emp_cat+all_cont_r1+lca3_full+(1|p_id), data = vax_cont_long)
+mod_full4<- lmer(cont_chng ~ vax_cat+StringencyIndex+variant_worry+age_cat1+pol_cat+hh_cat+emp_cat+all_cont_r1+lca4_full+(1|p_id), data = vax_cont_long)
+mod_full5<- lmer(cont_chng ~ vax_cat+StringencyIndex+variant_worry+age_cat1+pol_cat+hh_cat+emp_cat+all_cont_r1+lca5_full+(1|p_id), data = vax_cont_long)
+
+pars_res1 <- mod_res(mod_pars1)
+pars_res1a<- mod_res(mod_pars1a)
+pars_res2 <- mod_res(mod_pars2)
+full_res1 <- mod_res(mod_full1)
+full_res2 <- mod_res(mod_full2)
+full_res3 <- mod_res(mod_full3)
+full_res4 <- mod_res(mod_full4)
+full_res5 <- mod_res(mod_full5)
+
+#pars_res3 <- mod_res(mod_pars3)
+#full_res3 <- mod_res(mod_full3)
+
+tab_all <- tab_uni%>% 
+  left_join(full_res4, by = c("cat"="cat"))
+  #left_join(full_res1, by = c("cat"="cat"))%>%
+  #left_join(pars_res2, by = c("cat"="cat"))%>%
+  #left_join(full_res2, by = c("cat"="cat"))
+  #left_join(pars_res3, by = c("cat"="cat"))%>%
+  #left_join(full_res3, by = c("cat"="cat"))
+
+write.csv(tab_all, "0_tab/mod_res_all_change3.csv")
+
+
+
+# Modeling contact rate 
+## Random effects linear mixed models
+
+
+res_list <- list()
+res_list[[1]] <- lmer(value~vax_cat+(1|p_id),data = vax_cont_long)
+res_list[[2]] <- lmer(value ~ round+(1|p_id), data = vax_cont_long)
+res_list[[3]] <- lmer(value ~ age_cat1+(1|p_id), data = vax_cont_long)
+res_list[[4]] <- lmer(value~ race_eth_i+(1|p_id),data = vax_cont_long)
+res_list[[5]] <- lmer(value~ pol_cat+(1|p_id),data = vax_cont_long)
+res_list[[6]] <- lmer(value~ hh_cat+(1|p_id),data = vax_cont_long)
+res_list[[7]] <- lmer(value~ gender_i+(1|p_id),data = vax_cont_long)
+res_list[[8]] <- lmer(value~ comorb_cat+(1|p_id),data = vax_cont_long)
+res_list[[9]] <- lmer(value~ emp_cat+(1|p_id),data = vax_cont_long)
+res_list[[10]]<- lmer(value~ all_cont_r1+(1|p_id), data = vax_cont_long)
+res_list[[11]]<-lmer(value~variant_worry+(1|p_id), data = vax_cont_long)
+res_list[[12]]<-lmer(value~StringencyIndex+(1|p_id), data=vax_cont_long)
+res_list[[13]]<-lmer(value~string_cat+(1|p_id), data=vax_cont_long)
+
+
+res_uni<- lapply(res_list,mod_res)
+tab_uni <-do.call(rbind, res_uni)
+
+##Bivariate
+res_list2 <- list()
+res_list2[[1]] <- lmer(value~vax_cat+(1|p_id),data = vax_cont_long)
+res_list2[[2]] <- lmer(value~round+vax_cat+(1|p_id), data = vax_cont_long)
+res_list2[[3]] <- lmer(value~age_cat1+vax_cat+(1|p_id), data = vax_cont_long)
+res_list2[[4]] <- lmer(value~ race_eth_i+vax_cat+(1|p_id),data = vax_cont_long)
+res_list2[[5]] <- lmer(value~ pol_cat+vax_cat+(1|p_id),data = vax_cont_long)
+res_list2[[6]] <- lmer(value~ hh_cat+vax_cat+(1|p_id),data = vax_cont_long)
+res_list2[[7]] <- lmer(value~ gender_i+vax_cat+(1|p_id),data = vax_cont_long)
+res_list2[[8]] <- lmer(value~ comorb_cat+vax_cat+(1|p_id),data = vax_cont_long)
+res_list2[[9]] <- lmer(value~ emp_cat+vax_cat+(1|p_id),data = vax_cont_long)
+res_list2[[10]]<- lmer(value~ all_cont_r1+vax_cat+(1|p_id),data = vax_cont_long)
+res_list2[[11]]<-lmer(value~variant_worry+vax_cat+(1|p_id), data = vax_cont_long)
+res_list2[[12]]<-lmer(value~StringencyIndex+vax_cat+(1|p_id), data=vax_cont_long)
+res_list2[[13]]<-lmer(value~string_cat+vax_cat+(1|p_id), data=vax_cont_long)
+
+
+res_uni2<- lapply(res_list2,mod_res)
+
+write.xlsx(res_uni2, "0_tab/bivariate_all_contact.xlsx")
+
+#Multivariate
+#mod_pars1<- lmer(value ~ vax_cat+round+(1|p_id), data = vax_cont_long)
+#mod_pars2 <- lmer(value ~ vax_cat+round+all_cont_r1+(1|p_id), data = vax_cont_long)
+#mod_full1<- lmer(value ~ vax_cat+age_cat1+pol_cat+hh_cat+emp_cat+round+(1|p_id), data = vax_cont_long)
+#mod_full2<- lmer(value ~ vax_cat+age_cat1+pol_cat+hh_cat+emp_cat+round+all_cont_r1+(1|p_id), data = vax_cont_long)
+#mod_pars3 <- lmer(value ~ vax_cat+all_cont_r1+(1|p_id), data = vax_cont_long)
+#mod_full3<- lmer(value ~ vax_cat+age_cat1+pol_cat+hh_cat+emp_cat+all_cont_r1+(1|p_id), data = vax_cont_long)
+
+##Multivariate models
+mod_pars1 <- lmer(value~vax_cat+StringencyIndex+variant_worry+(1|p_id), data=vax_cont_long)
+mod_pars2 <- lmer(value~vax_cat+StringencyIndex+variant_worry+all_cont_r1+(1|p_id), data=vax_cont_long)
+
+mod_full1<- lmer(value~ vax_cat+StringencyIndex+variant_worry+age_cat1+pol_cat+hh_cat+emp_cat+(1|p_id), data = vax_cont_long)
+mod_full2<- lmer(value~ vax_cat+StringencyIndex+variant_worry+age_cat1+pol_cat+hh_cat+emp_cat+all_cont_r1+(1|p_id), data = vax_cont_long)
+
+
+pars_res1 <- mod_res(mod_pars1)
+full_res1 <- mod_res(mod_full1)
+pars_res2 <- mod_res(mod_pars2)
+full_res2 <- mod_res(mod_full2)
+
+tab_all <- tab_uni%>% 
+  left_join(pars_res1, by = c("cat"="cat"))%>%
+  left_join(full_res1, by = c("cat"="cat"))%>%
+  left_join(pars_res2, by = c("cat"="cat"))%>%
+  left_join(full_res2, by = c("cat"="cat"))
+
+tab_all <- tab_all%>% mutate_if(is.numeric, round,2)
+
+write.csv(tab_all, "0_tab/mod_res_all_contact2.csv")
+
+
+# Modeling change for work contacts
+## Random effects linear mixed models
+### Univariate
+
+res_list3 <- list()
+res_list3[[1]] <- lmer(cont_chng~vax_cat+(1|p_id),data = vax_cont_long_wk)
+res_list3[[2]] <- lmer(cont_chng ~ round+(1|p_id), data = vax_cont_long_wk)
+res_list3[[3]] <- lmer(cont_chng ~ age_cat1+(1|p_id), data = vax_cont_long_wk)
+res_list3[[4]] <- lmer(cont_chng~ race_eth_i+(1|p_id),data = vax_cont_long_wk)
+res_list3[[5]] <- lmer(cont_chng~ pol_cat+(1|p_id),data = vax_cont_long_wk)
+res_list3[[6]] <- lmer(cont_chng~ hh_cat+(1|p_id),data = vax_cont_long_wk)
+res_list3[[7]] <- lmer(cont_chng~ gender_i+(1|p_id),data = vax_cont_long_wk)
+res_list3[[8]] <- lmer(cont_chng~ comorb_cat+(1|p_id),data = vax_cont_long_wk)
+res_list3[[9]] <- lmer(cont_chng~ emp_cat+(1|p_id),data = vax_cont_long_wk)
+res_list3[[10]]<- lmer(cont_chng~ work_cont_r1+(1|p_id), data = vax_cont_long_wk)
+res_list3[[11]]<-lmer(cont_chng~variant_worry+(1|p_id), data = vax_cont_long_wk)
+res_list3[[12]]<-lmer(cont_chng~StringencyIndex+(1|p_id), data=vax_cont_long_wk)
+res_list3[[13]]<-lmer(cont_chng~string_cat+(1|p_id), data=vax_cont_long_wk)
+
+res_uni3<- lapply(res_list3,mod_res)
+tab_uni3 <-do.call(rbind, res_uni3)
+
+
+##Bivariate
+
+res_list4 <- list()
+res_list4[[1]] <- lmer(cont_chng~vax_cat+(1|p_id),data = vax_cont_long_wk)
+res_list4[[2]] <- lmer(cont_chng ~round+vax_cat+(1|p_id), data = vax_cont_long_wk)
+res_list4[[3]] <- lmer(cont_chng ~age_cat1+vax_cat+(1|p_id), data = vax_cont_long_wk)
+res_list4[[4]] <- lmer(cont_chng~ race_eth_i+vax_cat+(1|p_id),data = vax_cont_long_wk)
+res_list4[[5]] <- lmer(cont_chng~ pol_cat+vax_cat+(1|p_id),data = vax_cont_long_wk)
+res_list4[[6]] <- lmer(cont_chng~ hh_cat+vax_cat+(1|p_id),data = vax_cont_long_wk)
+res_list4[[7]] <- lmer(cont_chng~ gender_i+vax_cat+(1|p_id),data = vax_cont_long_wk)
+res_list4[[8]] <- lmer(cont_chng~ comorb_cat+vax_cat+(1|p_id),data = vax_cont_long_wk)
+res_list4[[9]] <- lmer(cont_chng~ emp_cat+vax_cat+(1|p_id),data = vax_cont_long_wk)
+res_list4[[10]]<- lmer(cont_chng~ work_cont_r1+vax_cat+(1|p_id),data = vax_cont_long_wk)
+res_list4[[11]]<-lmer(cont_chng~variant_worry+vax_cat+(1|p_id), data = vax_cont_long_wk)
+res_list4[[12]]<-lmer(cont_chng~StringencyIndex+vax_cat+(1|p_id), data=vax_cont_long_wk)
+res_list4[[13]]<-lmer(cont_chng~string_cat+vax_cat+(1|p_id), data=vax_cont_long_wk)
+
+
+res_uni4<- lapply(res_list4,mod_res)
+write.xlsx(res_uni4, "0_tab/bivariate_work_chng.xlsx")
+
+#Multivariate
+#mod_pars1<- lmer(cont_chng ~ vax_cat+round+(1|p_id), data = vax_cont_long_wk)
+#mod_pars2 <- lmer(cont_chng ~ vax_cat+round+work_cont_r1+(1|p_id), data = vax_cont_long_wk)
+#mod_full1<- lmer(cont_chng ~ vax_cat+age_cat1+pol_cat+hh_cat+emp_cat+round+(1|p_id), data = vax_cont_long_wk)
+#mod_full2<- lmer(cont_chng ~ vax_cat+age_cat1+pol_cat+hh_cat+emp_cat+round+work_cont_r1+(1|p_id), data = vax_cont_long_wk)
+#mod_pars3 <- lmer(cont_chng ~ vax_cat+work_cont_r1+(1|p_id), data = vax_cont_long_wk)
+#mod_full3<- lmer(cont_chng ~ vax_cat+age_cat1+pol_cat+hh_cat+emp_cat+work_cont_r1+(1|p_id), data = vax_cont_long_wk)
+
+mod_pars1 <- lmer(cont_chng~vax_cat+StringencyIndex+variant_worry+(1|p_id), data=vax_cont_long_wk)
+mod_pars2 <- lmer(cont_chng~vax_cat+StringencyIndex+variant_worry+work_cont_r1+(1|p_id), data=vax_cont_long_wk)
+mod_full1<- lmer(cont_chng ~ vax_cat+StringencyIndex+variant_worry+age_cat1+pol_cat+hh_cat+emp_cat+(1|p_id), data = vax_cont_long_wk)
+mod_full2<- lmer(cont_chng ~ vax_cat+StringencyIndex+variant_worry+age_cat1+pol_cat+hh_cat+emp_cat+work_cont_r1+(1|p_id), data = vax_cont_long_wk)
+
+pars_res1 <- mod_res(mod_pars1)
+full_res1 <- mod_res(mod_full1)
+pars_res2 <- mod_res(mod_pars2)
+full_res2 <- mod_res(mod_full2)
+#pars_res3 <- mod_res(mod_pars3)
+#full_res3 <- mod_res(mod_full3)
+
+tab_all <- tab_uni3%>% 
+  left_join(pars_res1, by = c("cat"="cat"))%>%
+  left_join(full_res1, by = c("cat"="cat"))%>%
+  left_join(pars_res2, by = c("cat"="cat"))%>%
+  left_join(full_res2, by = c("cat"="cat"))
+  #left_join(pars_res3, by = c("cat"="cat"))%>%
+  #left_join(full_res3, by = c("cat"="cat"))
+
+write.csv(tab_all, "0_tab/mod_res_work_change2.csv")
+
+# Modeling change for other contacts
+## Random effects linear mixed models
+### Univariate
+
+res_list5 <- list()
+res_list5[[1]] <- lmer(cont_chng~vax_cat+(1|p_id),data = vax_cont_long_oth)
+res_list5[[2]] <- lmer(cont_chng ~ round+(1|p_id), data = vax_cont_long_oth)
+res_list5[[3]] <- lmer(cont_chng ~ age_cat1+(1|p_id), data = vax_cont_long_oth)
+res_list5[[4]] <- lmer(cont_chng~ race_eth_i+(1|p_id),data = vax_cont_long_oth)
+res_list5[[5]] <- lmer(cont_chng~ pol_cat+(1|p_id),data = vax_cont_long_oth)
+res_list5[[6]] <- lmer(cont_chng~ hh_cat+(1|p_id),data = vax_cont_long_oth)
+res_list5[[7]] <- lmer(cont_chng~ gender_i+(1|p_id),data = vax_cont_long_oth)
+res_list5[[8]] <- lmer(cont_chng~ comorb_cat+(1|p_id),data = vax_cont_long_oth)
+res_list5[[9]] <- lmer(cont_chng~ emp_cat+(1|p_id),data = vax_cont_long_oth)
+res_list5[[10]]<- lmer(cont_chng~ oth_cont_r1+(1|p_id), data = vax_cont_long_oth)
+res_list5[[11]]<-lmer(cont_chng~variant_worry+(1|p_id), data = vax_cont_long_oth)
+res_list5[[12]]<-lmer(cont_chng~StringencyIndex+(1|p_id), data=vax_cont_long_oth)
+res_list5[[13]]<-lmer(cont_chng~string_cat+(1|p_id), data=vax_cont_long_oth)
+
+res_uni5<- lapply(res_list5,mod_res)
+tab_uni5 <-do.call(rbind, res_uni5)
+
+
+##Bivariate
+res_list6 <- list()
+res_list6[[1]] <- lmer(cont_chng~vax_cat+(1|p_id),data = vax_cont_long_oth)
+res_list6[[2]] <- lmer(cont_chng ~round+vax_cat+(1|p_id), data = vax_cont_long_oth)
+res_list6[[3]] <- lmer(cont_chng ~age_cat1+vax_cat+(1|p_id), data = vax_cont_long_oth)
+res_list6[[4]] <- lmer(cont_chng~ race_eth_i+vax_cat+(1|p_id),data = vax_cont_long_oth)
+res_list6[[5]] <- lmer(cont_chng~ pol_cat+vax_cat+(1|p_id),data = vax_cont_long_oth)
+res_list6[[6]] <- lmer(cont_chng~ hh_cat+vax_cat+(1|p_id),data = vax_cont_long_oth)
+res_list6[[7]] <- lmer(cont_chng~ gender_i+vax_cat+(1|p_id),data = vax_cont_long_oth)
+res_list6[[8]] <- lmer(cont_chng~ comorb_cat+vax_cat+(1|p_id),data = vax_cont_long_oth)
+res_list6[[9]] <- lmer(cont_chng~ emp_cat+vax_cat+(1|p_id),data = vax_cont_long_oth)
+res_list6[[10]] <- lmer(cont_chng~ oth_cont_r1+vax_cat+(1|p_id),data = vax_cont_long_oth)
+res_list6[[11]]<-lmer(cont_chng~variant_worry+vax_cat+(1|p_id), data = vax_cont_long_oth)
+res_list6[[12]]<-lmer(cont_chng~StringencyIndex+vax_cat+(1|p_id), data=vax_cont_long_oth)
+res_list6[[13]]<-lmer(cont_chng~string_cat+vax_cat+(1|p_id), data=vax_cont_long_oth)
+
+res_uni6<- lapply(res_list6,mod_res)
+write.xlsx(res_uni6, "0_tab/bivariate_oth_chng.xlsx")
+
+##Multivariate
+#mod_pars1<- lmer(cont_chng ~ vax_cat+round+(1|p_id), data = vax_cont_long_oth)
+#mod_pars2 <- lmer(cont_chng ~ vax_cat+round+oth_cont_r1+(1|p_id), data = vax_cont_long_oth)
+#mod_full1<- lmer(cont_chng ~ vax_cat+age_cat1+pol_cat+hh_cat+emp_cat+round+(1|p_id), data = vax_cont_long_oth)
+#mod_full2<- lmer(cont_chng ~ vax_cat+age_cat1+pol_cat+hh_cat+emp_cat+round+oth_cont_r1+(1|p_id), data = vax_cont_long_oth)
+#mod_pars3 <- lmer(cont_chng ~ vax_cat+oth_cont_r1+(1|p_id), data = vax_cont_long_oth)
+#mod_full3<- lmer(cont_chng ~ vax_cat+age_cat1+pol_cat+hh_cat+emp_cat+oth_cont_r1+(1|p_id), data = vax_cont_long_oth)
+
+mod_pars1 <- lmer(cont_chng~vax_cat+StringencyIndex+variant_worry+(1|p_id), data=vax_cont_long_oth)
+mod_pars2 <- lmer(cont_chng~vax_cat+StringencyIndex+variant_worry+oth_cont_r1+(1|p_id), data=vax_cont_long_oth)
+mod_full1<- lmer(cont_chng ~ vax_cat+StringencyIndex+variant_worry+age_cat1+pol_cat+hh_cat+emp_cat+(1|p_id), data = vax_cont_long_oth)
+mod_full2<- lmer(cont_chng ~ vax_cat+StringencyIndex+variant_worry+age_cat1+pol_cat+hh_cat+emp_cat+oth_cont_r1+(1|p_id), data = vax_cont_long_oth)
+
+
+pars_res1 <- mod_res(mod_pars1)
+full_res1 <- mod_res(mod_full1)
+pars_res2 <- mod_res(mod_pars2)
+full_res2 <- mod_res(mod_full2)
+#pars_res3 <- mod_res(mod_pars3)
+#full_res3 <- mod_res(mod_full3)
+
+tab_all <- tab_uni5%>% 
+  left_join(pars_res1, by = c("cat"="cat"))%>%
+  left_join(full_res1, by = c("cat"="cat"))%>%
+  left_join(pars_res2, by = c("cat"="cat"))%>%
+  left_join(full_res2, by = c("cat"="cat"))
+  #left_join(pars_res3, by = c("cat"="cat"))%>%
+  #left_join(full_res3, by = c("cat"="cat"))
+
+write.csv(tab_all, "0_tab/mod_res_oth_change2.csv")
+
+
+###Increase versus decrease binary
+
+
+#########################
+###Linear regressions###
+#########################
+m1 <- lm(cont_chng~vax_cat+all_cont_r1+round,data = vax_cont_long, family="binomial")
+m2 <- lm(cont_chng ~ round, data = vax_cont_long, family="binomial")
+m3 <- lm(cont_chng ~ age_cat1, data = vax_cont_long, family="binomial")
+m4 <- lm(cont_chng~ race_eth_i,data = vax_cont_long, family="binomial")
+m5 <- lm(cont_chng~ pol_cat,data = vax_cont_long, family="binomial")
+m6 <- lm(cont_chng~ hh_cat,data = vax_cont_long, family="binomial")
+
+mfull<- lm(cont_chng ~ vax_cat+age_cat1+pol_cat+race_eth_i+hh_cat+round, data = vax_cont_long, family="binomial")
+
+summary(m1)
+

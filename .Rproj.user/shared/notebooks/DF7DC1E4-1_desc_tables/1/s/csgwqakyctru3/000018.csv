@@ -1,0 +1,4 @@
+"0","glm(vax_cat~lca4_full, data=vax_cont_all99)
+"
+"2","Error in y - mu : non-numeric argument to binary operator
+"
