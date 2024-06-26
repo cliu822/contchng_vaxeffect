@@ -1,0 +1,8 @@
+"0","library(openxlsx)"
+"2","Warning: package ‘openxlsx’ was built under R version 4.3.2"
+"0","library(dplyr)"
+"0","library(tidyr)"
+"0",""
+"0","df_cont_cov <- readRDS(""0_data/3_cont_long_cov.RDS"")"
+"0","df_behav <- readRDS(""0_data/2_behavior_r1r2r3r4.RDS"") #Wide version of behavior info r1-r4"
+"0",""

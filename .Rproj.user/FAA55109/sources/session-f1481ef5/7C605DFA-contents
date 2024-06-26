@@ -46,9 +46,9 @@ library(ggpubr)
 library(cowplot)
 library(stringr)
 
-df_cont_cov <- readRDS("0_RDSdata/3_cont_long_cov.RDS")
-df_behav <- readRDS("0_RDSdata/2_behavior_r1r2r3r4.RDS") #Wide version of behavior info r1-r4
-vax_cont_long_full <- readRDS("0_RDSdata/3_vax_cont_long_full.RDS")
+df_cont_cov <- readRDS("0_data/3_cont_long_cov.RDS")
+df_behav <- readRDS("0_data/2_behavior_r1r2r3r4.RDS") #Wide version of behavior info r1-r4
+vax_cont_long_full <- readRDS("0_data/3_vax_cont_long_full.RDS")
 
 
 ```
@@ -435,7 +435,7 @@ dev.off()
 ```
 
 ```{r}
-covid_vax_wk_us <-readRDS("0_RDSdata/0_covid_vax_wk_us.RDS")
+covid_vax_wk_us <-readRDS("0_data/0_covid_vax_wk_us.RDS")
 
 ps1c2 <- covid_vax_wk_us%>%
   filter(Date<=as.Date("2022-05-01"))%>%
