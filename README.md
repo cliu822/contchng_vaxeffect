@@ -11,12 +11,12 @@ The code for the main analysis can be found in [contchng_vaxeffect](https://gith
 | [0_baseline_characteristics](0_data/0_baseline_characteristics.RDS)           |Participant characteristics collected at baseline|
 | [0_covid_vax_wk_co](0_data/0_covid_vax_wk_co.RDS)           |County-level vax coverage by week|
 | [0_covid_vax_wk_us](0_data/0_covid_vax_wk_us.RDS)           |US vax coverage by week|
-| [0_lca_class](0_data/0_data/0_lca_vlass.RDS)           |LCA classifications for each participant at baseline from [1_lca_baseline](1_lca_baseline.Rmd)|
+| [0_lca_class](0_data/0_lca_class.RDS)           |LCA classifications for each participant at baseline from [1_lca_baseline](1_lca_baseline.Rmd)|
 | [0_surveydates](0_data/0_surveydates_r1r2r3r4.RDS)           |Participant survey dates for each round|
 | [1_contact_long](0_data/1_contact_long_r1r2r3r4.RDS)           |Contact data linelisted by participant, survey round, location and physical vs non-physical|
 | [2_behavior](0_data/2_behavior_r1r2r3r4.RDS)           |Behavior data for all four rounds linelisted by participant|
 | [3_cont_long_cov](0_data/3_cont_long_cov.RDS)           |Contact data (all locations & attributed) linelisted by participant and survey round, joined with participant characteristics|
-| [3_cont_long_cov](0_data/3_cont_long_cov.RDS)           |Joined vaccination and contact data, linelisted by participant, survey round and truncation choice of contact|
+| [3_vax_cont_long_full](0_data/3_vax_cont_long_full.RDS)           |Joined vaccination and contact data, linelisted by participant, survey round and truncation choice of contact|
 
 ### Description of main analysis code
 
