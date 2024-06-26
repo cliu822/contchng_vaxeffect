@@ -23,8 +23,8 @@ The code for the main analysis can be found in [contchng_vaxeffect](https://gith
 | File                   | Description |
 | ---------------------- | ------------- |
 | [1_lca_baseline](1_lca_baseline.Rmd)           |Latent class analysis of baseline|
-| [2_desc_figs](2_desc_figs.R)        | Code to generate descriptive figures|
-| [2_desc_tables](2_desc_tables.R)        | Code to generate descriptive tables|
+| [2_desc_figs](2_desc_figs.Rmd)        | Code to generate descriptive figures|
+| [2_desc_tables](2_desc_tables.Rmd)        | Code to generate descriptive tables|
 | [3_model_vax_contchng](3_model_vax_contchng.R)        |Statistical model code estimating effect of vaccination on changes in contact|
 | [4_r0calc](4_r0calc.R)        |Estimating R0 over time through Next Generation Matrices|
 | [5_modelres_figtab](5_modelres_figtab.R)        |Code for figures and tables from model and R0 estimations|
