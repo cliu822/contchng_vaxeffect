@@ -1,0 +1,2 @@
+"0","  #facet_wrap(~class)"
+"0","  #facet_grid(rows=vars(mod), cols = vars(class))"

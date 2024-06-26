@@ -39,7 +39,9 @@ vax_cont_long_full <- vax_cont_long_full%>%
 
 #vax_cont_long_full<- vax_cont_long_full%>%filter(outcome%in%c("val99_all","val99_home","val99_other","val99_work"))
 vax_cont_long_full<- vax_cont_long_full%>%
-                      mutate(vax_comm_cat_all = as.factor(vax_comm_cat_all))
+                      mutate(vax_comm_cat_all = as.factor(vax_comm_cat_all))%>%
+                      mutate(variant_worry_cat =factor(variant_worry_cat,
+                                                       levels = c("Decreased greatly","Decreased slightly","No change","Increased slightly","Increased greatly")))
 
 vax_cont_list <- split(vax_cont_long_full,vax_cont_long_full$outcome)
 
@@ -84,7 +86,7 @@ compute_uni_full <- function(x){
                     
                     ##Multivariate model
                     #mod_full4<- lmer(cont_chng ~ vax_cat2+StringencyIndex+variant_worry_cat+age_cat1+pol_cat+hh_cat+income_cat+emp_cat+base_cont+lca4_full+vax_comm_cat_all+(1|p_id), data = x)
-                    mod_full4<- lmer(cont_chng ~ vax_cat2+StringencyIndex+variant_worry_cat+age_cat1+pol_cat+hh_cat+emp_cat+base_cont+lca4_full+Series_Complete_Pop_Pct+(1|p_id), data = x)
+                    mod_full4<- lmer(cont_chng ~ vax_cat2+StringencyIndex+variant_worry_cat+age_cat1+pol_cat+hh_cat+emp_cat+lca4_full+Series_Complete_Pop_Pct+(1|p_id), data = x)
                     full_res4 <- mod_res(mod_full4)
                     
                     tab_all <-tab_uni%>% 
@@ -135,3 +137,41 @@ names(res_full_list)<- names(vax_cont_list)     ##Set list names
 
 saveRDS(res_full_list, "0_RDSdata/4_res_full_list.RDS")
 #####
+
+##Extract the modeled effect estimates without concern for new variants
+mod_full4<- lmer(cont_chng ~ vax_cat2+StringencyIndex+age_cat1+pol_cat+hh_cat+emp_cat+lca4_full+Series_Complete_Pop_Pct+variant_worry_cat+(1|p_id), data = vax_cont_list[[13]])
+full_res4 <- mod_res(mod_full4)
+write.csv(full_res4, "0_tab/res_maineffect_noconcern.csv")
+
+lmer(cont_chng~vax_cat2+(1|p_id)+base_cont,data = vax_cont_list[[13]])
+lm(cont_chng~vax_cat2+base_cont, data = vax_cont_list[[13]])
+df <- vax_cont_list[[13]]
+df%>%group_by(vax_cat2,vax_round)%>%dplyr::summarise(n=n(),cont_chng=mean(cont_chng))
+lmer(cont_chng~vax_cat2+(1|p_id),data = df)
+lm(cont_chng~vax_cat2, data = df)
+
+mod_full4<- lmer(cont_chng ~ vax_cat2+StringencyIndex+age_cat1+pol_cat+hh_cat+emp_cat+lca4_full+variant_worry_cat+base_cont+Series_Complete_Pop_Pct+(1|p_id), data = vax_cont_list[[13]])
+full_res4 <- mod_res(mod_full4)
+write.csv(full_res4,"0_tab/res_maineffect.csv")
+
+mod_full4<- lmer(cont_chng ~ vax_cat2+StringencyIndex+age_cat1+pol_cat+hh_cat+emp_cat+lca4_full+variant_worry_cat+Series_Complete_Pop_Pct+(1|p_id), data = vax_cont_list[[13]])
+full_res4 <- mod_res(mod_full4)
+write.csv(full_res4,"0_tab/res_maineffect_nobasecont.csv")
+
+
+vax_cont_list[[13]]%>%
+ggplot()+
+  geom_point(aes(x=base_cont, y=cont_chng))
+
+vax_cont_list[[13]]%>%
+  filter(base_cont==0)%>%
+  select(cont_chng,vax_round)
+
+lmer(cont_chng ~ vax_cat2+StringencyIndex+age_cat1+hh_cat+(1|p_id), data = vax_cont_list[[13]])
+
+df <- vax_cont_list[[13]]
+df<- df%>%
+      mutate(variant_worry_cat =factor(variant_worry_cat,
+                                       levels = c("Decreased greatly","Decreased slightly","No change","Increased slightly","Increased greatly")))
+m1 <- lmer(cont_chng ~ vax_cat2+StringencyIndex+variant_worry_cat+age_cat1+pol_cat+hh_cat+emp_cat+lca4_full+Series_Complete_Pop_Pct+(1|p_id), data = df)
+mod_res(m1)

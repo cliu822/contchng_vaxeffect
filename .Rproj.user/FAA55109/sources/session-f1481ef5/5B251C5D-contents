@@ -44,6 +44,7 @@ library(gridExtra)
 library(grid)
 library(ggpubr)
 library(cowplot)
+library(stringr)
 
 df_cont_cov <- readRDS("0_RDSdata/3_cont_long_cov.RDS")
 df_behav <- readRDS("0_RDSdata/2_behavior_r1r2r3r4.RDS") #Wide version of behavior info r1-r4
@@ -64,7 +65,7 @@ var_lab <- data.frame(var = c("age_cat1","pol_cat","emp_cat","hh_cat","gender_i"
                                                 "HH size","Political affiliation","Employment stat")))
 
 df_cont_cov_long <- df_cont_cov%>%
-                        select(round, p_id, val99_all, age_cat1:emp_cat)%>%                      #Select round, all contacts 99th percentile, covariate 
+                        dplyr::select(round, p_id, val99_all, age_cat1:emp_cat)%>%                      #Select round, all contacts 99th percentile, covariate 
                         pivot_longer(cols = age_cat1:emp_cat, names_to="var",values_to="val")%>%
                     
                          mutate(val = ifelse(val %in% c("Unknown Pol", "Unknown Emp"), NA_character_,val),
@@ -139,6 +140,7 @@ png("0_plot/1_contact_trajectories_covariate_v3.png",width=6,height=8, units="in
              bottom=textGrob("Round"),left=textGrob("Mean contact",rot = 90)))
 dev.off()
 ```
+
 ```{r}
 ##Contact change over time by income
 df_cont_cov%>%
@@ -167,10 +169,10 @@ p1b<- df_cont_cov%>%
          scale_radius(range = c(1, 10), breaks=c(0,500,1000,1500,2000), 
                       guide = guide_legend(override.aes = list(color="gray80")), name="No. participants")+         
          scale_color_brewer(palette = "YlGnBu",direction=-1, name="Vax dose")+
-         ylim(5,20)+
+         ylim(0,25)+
          theme_classic()+
          ggtitle("B. Contact rates by vaccine doses received")+ylab("Mean contact (log scale)")+xlab("Round")+
-         scale_y_log10()+
+         #scale_y_log10(limits = c(5,20))+
          theme(
               #legend.title = element_blank(),
                legend.position = c(0.2, 0.75),
@@ -183,6 +185,7 @@ p1b<- df_cont_cov%>%
                plot.title = element_text(size = 16),
                legend.box="horizontal")
 
+p1b
 ```
 
 ##Change in vax status eposure categories over time
@@ -250,7 +253,7 @@ p1<- annotate_figure(p1,bottom=text_grob("Round",size=14),
                      top = text_grob(" A. Mean contact by subgroup and round", size=16, just="right", hjust=0.9))
 
 p2 <- plot_grid(p1b,p1c, ncol=1,align="v")
-png("0_plot/1_fig1_v2.png",width=15,height=11, units="in",res=800)
+png("0_plot/1_fig1_v3.png",width=15,height=11, units="in",res=800)
 #grid.arrange(p1,p8,p10,ncol=2,nrow=2,
 #             layout_matrix=rbind(c(1,2),c(1,3)))
 plot_grid(p1,p2, align="h")
