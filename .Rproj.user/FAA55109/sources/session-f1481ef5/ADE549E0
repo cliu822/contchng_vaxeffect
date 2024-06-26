@@ -1,26 +1,26 @@
 {
-    "id": "D8247359",
-    "path": "~/DIssertation/Aim 1/contchng_vaxeffect/4_r0calc_redo.R",
-    "project_path": "4_r0calc_redo.R",
+    "id": "ADE549E0",
+    "path": "~/DIssertation/Aim 1/contchng_vaxeffect/5_modelres_figtab.R",
+    "project_path": "5_modelres_figtab.R",
     "type": "r_source",
-    "hash": "0",
+    "hash": "3280627968",
     "contents": "",
     "dirty": false,
-    "created": 1719403205485.0,
+    "created": 1719429248828.0,
     "source_on_save": false,
     "relative_order": 5,
     "properties": {
         "source_window_id": "",
         "Source": "Source",
-        "cursorPosition": "0,0",
-        "scrollLine": "0"
+        "cursorPosition": "246,0",
+        "scrollLine": "217"
     },
     "folds": "",
-    "lastKnownWriteTime": 1719403240,
+    "lastKnownWriteTime": 1719429953,
     "encoding": "UTF-8",
     "collab_server": "",
     "source_window": "",
-    "last_content_update": 1719403240626,
+    "last_content_update": 1719429953519,
     "read_only": false,
     "read_only_alternatives": []
 }

@@ -108,7 +108,7 @@ dev.off()
 ###Main effect for all contacts
 p1_main <- res_main%>%
               filter(truncate=="99th percentile")%>%
-              #filter(outcome=="all")%>%
+              filter(outcome=="all")%>%
               filter(vaxcat!="Every 20% increase in vax coverage")%>%
               mutate(outcome = case_when(
                 outcome=="all"~"All"))%>%
@@ -177,25 +177,6 @@ dev.off()
 
 
 
-p4 <- 
-  ggplot()+
-  geom_raster(data=df1a,aes(x=Q, y=cov, z=r0_rel, fill=r0_rel))+
-  geom_contour(data=df1a,aes(x=Q,y=cov,z=r0_rel),color="black",alpha=0.7)+
-  geom_hline(data=us_cov,aes(yintercept=us_cov), linetype="dashed", color = "red",size=1)+
-  geom_text(data=us_cov,aes(y=us_cov,x=0.5,label = "US coverage",vjust=-0.3), color="red", size=5)+
-  scale_fill_viridis_c(breaks = c(0.4,0.5,0.6,0.7,0.8,0.9,1.0,1.1), "Ratio \nof Rt/R0")+
-  facet_wrap(~round)+theme_bw()+xlab("Q (Assortativity index)")+ylab("Vaccine coverage")+
-  ggtitle("B. Relative transmissibility based on measured contact in vaxed and unvaxed for each round")+
-  theme(legend.position = "left",
-        legend.text = element_text(size=13),
-        legend.title=element_text(size=16),
-        axis.text.y = element_text(size=16),
-        axis.text.x = element_text(size=16),
-        axis.title = element_text(size=16),
-        plot.title = element_text(size=20),
-        strip.text = element_text(size=16),
-        plot.margin=unit(c(0.7,0.2,1,0.1),"cm"))
-
 png("0_plot/p1_main.png",width=12,height=6, units="in",res=400)
 p1_main_loc
 dev.off()
@@ -231,6 +212,7 @@ p2 <- df%>%
   mutate(rel_r0 = r0/3,
          ve_s = as.factor(ve_s))%>%
   filter(ve_s %in% c(0, 0.10,0.20,0.30,0.40,0.50,0.60,0.70,0.80))%>%
+  filter(est_cat=="est")%>%
   mutate(ve_s = factor(ve_s, levels = c(0.8,0.7,0.6,0.5,0.4,0.3,0.2,0.1,0)),
          round = case_when(
            round=="round2"~"Round 2",
@@ -260,137 +242,5 @@ p2 <- df%>%
 png("0_plot/3_supp10.png", width=12, height=6, units="in",res=400)
 p2
 dev.off()
-
-##Other option for Figure two with relative transmissibility all rounds one panel
-# select 50% VEs and coverage based on US average
-
-p3 <- df%>%
-  mutate(rel_r0 = r0/3,
-         ve_s = as.factor(ve_s))%>%
-  filter(ve_s== 0.50)%>%
-  mutate(
-    round = case_when(
-      round=="round2"~"Round 2",
-      round=="round3"~"Round 3",
-      round=="round4"~"Round 4"
-    ))%>%
-  ggplot(aes(x=Q, y=rel_r0,color=round,group=round))+
-  scale_color_brewer(palette="BuPu",direction=1,"Round")+
-  geom_line(size=1.8)+
-  theme_bw()+
-  xlab("Q (Assortativity coefficient)")+
-  ylab("Relative transmissibility (Ratio of Rt/R0)")+
-  ylim(0.5,1.2)+
-  ggtitle("B. Relative transmissibility based on measured contact & vax coverage for each round")+
-  theme(legend.position = "left",
-        legend.text = element_text(size=13),
-        legend.title=element_text(size=16),
-        axis.text.y = element_text(size=16),
-        axis.text.x = element_text(size=16),
-        axis.title = element_text(size=16),
-        plot.title = element_text(size=20),
-        strip.text = element_text(size=16),
-        plot.margin=unit(c(0.8,0.2,1,0.1),"cm"))
-
-png("0_plot/1_fig2_v4.png",width=14,height=12, units="in",res=400)
-gridExtra::grid.arrange(p1_main,p3,ncol=1, nrow=7, 
-                        layout_matrix=rbind(1,1,1,1,2,2,2))
-dev.off()
-
-###Scraps below
-
-
-
-
-
-
-df1 <- readRDS("0_data/4_r0_ve_vary.RDS")
-df1 <- readRDS("0_data/4_r0_ve_realcov.RDS")
-
-pal2 <- c("#BFD3E6","#9EBCDA","#8C6BB1","#810F7C","#4D004B")
-df1 <- df1%>%
-  mutate(r0_rel = r0/3)
-p2a <-df1%>%
-  select(ve_s, round, r0_rel,cov)%>%
-  filter(ve_s %in%c(0,0.25,0.5,0.75,0.95))%>%
-  ggplot(aes(x=round, y=r0_rel,color=factor(ve_s), group=ve_s))+
-  geom_point(size=2)+
-  geom_line(size=1)+
-  scale_color_manual(values=rev(pal2), labels=c("0%","25%","50%","75%","95%"),"VE")+
-  #scale_color_brewer(palette="BuPu",direction=-1)+
-  theme_classic()+ylab("R relative to initial R0")+
-  xlab("Round")+
-  ggtitle("Relative transmissibility based on measured contacts in vaxed & unvaxed")+
-  theme(
-    legend.text = element_text(size=12),
-    legend.title=element_text(size=14),
-    axis.text.y = element_text(size=14),
-    axis.text.x = element_text(size=11),
-    axis.title=element_text(size=14),
-    plot.title = element_text(size=14))
-
-png("0_plot/p2a.png",width=7,height=4, units="in",res=400)
-p2a
-dev.off()
-
-
-pal <- c("#A50026","#D73027", "#F46D43","#FDAE61","#FEE090","#FFFFBF","#E0F3F8","#ABD9E9","#74ADD1","#4575B4","#313695")
-#pal <- c("#A50026","#D73027","#F46D43","#FDAE61","#FEE08B","#FFFFBF","#D9EF8B","#A6D96A",
-#"#66BD63","#1A9850","#006837")
-survey_cont <- data.frame(cont_v = c(9.2,11.6,14.9),
-                          cont_u = c(11.5,15.6,17.3),
-                          round = c("round1","round2","round3"))
-
-df <- df%>%
-  mutate(cont_v = cont_vv+cont_vu,
-         cont_u = cont_uu+cont_uv)%>%
-  filter(ve_s %in% c(0,0.25,0.5,0.75,0.95))%>%
-  mutate(ve_lab = paste("VE - ",ve_s*100,"%", sep=""))
-
-
-
-df50 <- df%>%filter(ve_s==0.50)
-p2b <- ggplot()+
-  geom_raster(data=df50,aes(x=cont_v, y=cont_u,z=r0_rel,fill=r0_rel),alpha=0.8)+
-  scale_fill_gradientn(breaks=c(0,0.5,1,1.5,2,2.5),colours=rev(pal))+
-  geom_point(data=survey_cont, aes(x=cont_v,y=cont_u,label=round),shape=18,size=4)+
-  geom_text(data=survey_cont,aes(x=cont_v,y=cont_u,label=round), nudge_y = -1.3, nudge_x = 2)+
-  theme_bw()+
-  xlab("Contacts per person per day among vaccinated")+ylab("Contacts per person per day \n among unvaxed")+
-  ggtitle("")+
-  theme(legend.position = "left",
-        legend.text = element_text(size=14),
-        legend.title=element_text(size=14),
-        axis.text.y = element_text(size=14),
-        axis.text.x = element_text(size=14),
-        axis.title=element_text(size=14),
-        plot.title = element_text(size=14),
-        strip.text = element_text(size=14))
-
-p2b_supp <- ggplot()+
-  geom_raster(data=df,aes(x=cont_v, y=cont_u,z=r0_rel,fill=r0_rel),alpha=0.8)+
-  scale_fill_gradientn(breaks=c(0,0.5,1,1.5,2,2.5),colours=rev(pal))+
-  geom_point(data=survey_cont, aes(x=cont_v,y=cont_u,label=round),shape=18,size=4)+
-  geom_text(data=survey_cont,aes(x=cont_v,y=cont_u,label=round), nudge_y = -1.3, nudge_x = 2)+
-  facet_wrap(~ve_lab,nrow=1)+
-  theme_bw()+
-  xlab("Contacts per person per day among vaccinated")+ylab("Contacts per person per day \n among unvaxed")+
-  ggtitle("")+
-  theme(legend.position = "left",
-        legend.text = element_text(size=14),
-        legend.title=element_text(size=14),
-        axis.text.y = element_text(size=14),
-        axis.text.x = element_text(size=14),
-        axis.title=element_text(size=14),
-        plot.title = element_text(size=14),
-        strip.text = element_text(size=14))
-
-png("0_plot/1_fig2_v2.png",width=13,height=10, units="in",res=400)
-#grid.arrange(p1,p8,p10,ncol=2,nrow=2,
-#             layout_matrix=rbind(c(1,2),c(1,3)))
-gridExtra::grid.arrange(p1_main,p2,ncol=1, nrow=5, 
-                        layout_matrix=rbind(1,2))
-dev.off()
-
 
 
