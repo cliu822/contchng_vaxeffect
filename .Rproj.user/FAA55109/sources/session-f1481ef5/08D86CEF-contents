@@ -1,5 +1,0 @@
-covidvax <- read.csv("0_data/0_covidvax_coverage.csv")
-covidvaxwk <- readRDS("0_data/0_covid_vax_wk_co.RDS")
-
-survey<- readRDS("0_data/0_surveydates_r1r2r3r4.RDS")
-behav<- readRDS("0_data/3_vax_cont_long_full.RDS")
