@@ -28,7 +28,7 @@ library(stringr)
                 #4)Censoring at 95th percentile
             
 
-vax_cont_long_full <- readRDS("0_data/3_vax_cont_long_full_new.RDS")%>%arrange(outcome)
+vax_cont_long_full <- readRDS("0_data/3_vax_cont_long_full.RDS")%>%arrange(outcome)
 vax_cont_long_full <- vax_cont_long_full%>%
                       mutate(Series_Complete_Pop_Pct = Series_Complete_Pop_Pct/20)
 
@@ -120,19 +120,6 @@ get_maineff1 <- function(x){
   return(main_eff)
 }
 
-get_maineff2 <- function(x){
-  
-  main_eff <- x%>%filter(cat %in% c("vax_cat2a1_first_new",
-                                    "vax_cat2a2_full_new",
-                                    "vax_cat2a3_full_vax",
-                                    "Series_Complete_Pop_Pct"))%>%
-    select(cat,est, lo_2.5,hi_97.5)%>%
-    mutate(cat = gsub("vax_cat2","",cat))
-  colnames(main_eff)<- c("vaxcat","multi_est","multi_lo","multi_hi")
-  return(main_eff)
-}
-
-
 
 ##Function to take raw output and simplify into presentable table
 get_tab <- function(x){
@@ -148,7 +135,7 @@ get_tab <- function(x){
 res_full_list <- lapply(vax_cont_list,compute_uni_full)
 names(res_full_list)<- names(vax_cont_list)     ##Set list names
 
-saveRDS(res_full_list, "0_data/4_res_full_list.RDS")
+saveRDS(res_full_list, "0_RDSdata/4_res_full_list.RDS")
 #####
 
 ##Extract the modeled effect estimates without concern for new variants
@@ -176,33 +163,15 @@ vax_cont_list[[13]]%>%
 ggplot()+
   geom_point(aes(x=base_cont, y=cont_chng))
 
+vax_cont_list[[13]]%>%
+  filter(base_cont==0)%>%
+  select(cont_chng,vax_round)
 
+lmer(cont_chng ~ vax_cat2+StringencyIndex+age_cat1+hh_cat+(1|p_id), data = vax_cont_list[[13]])
 
 df <- vax_cont_list[[13]]
 df<- df%>%
       mutate(variant_worry_cat =factor(variant_worry_cat,
                                        levels = c("Decreased greatly","Decreased slightly","No change","Increased slightly","Increased greatly")))
-m1 <- lmer(cont_chng ~ vax_cat2+Series_Complete_Pop_Pct+variant_worry_cat+age_cat1+pol_cat+hh_cat+emp_cat+lca4_full+StringencyIndex+(1|p_id), data = df)
+m1 <- lmer(cont_chng ~ vax_cat2+StringencyIndex+variant_worry_cat+age_cat1+pol_cat+hh_cat+emp_cat+lca4_full+Series_Complete_Pop_Pct+(1|p_id), data = df)
 mod_res(m1)
-
-mod_allcov <- lmer(cont_chng ~ vax_cat2+Series_Complete_Pop_Pct+age_cat1+gender_i+race_eth_i+hh_cat+pol_cat+emp_cat+income+comorb_cat+lca4_full+base_cont+variant_worry_cat+StringencyIndex+(1|p_id), data = vax_cont_list[[13]])
-mod_allcovres <- mod_res(mod_allcov)
-
-
-res_list <- list()
-res_list[[1]] <- lmer(cont_chng~vax_cat2+(1|p_id),data = x)
-res_list[[2]]<-lmer(cont_chng~Series_Complete_Pop_Pct+(1|p_id),data=x)
-res_list[[3]] <- lmer(cont_chng ~ age_cat1+(1|p_id), data = x)
-res_list[[4]] <- lmer(cont_chng~ gender_i+(1|p_id),data = x)                      
-res_list[[5]] <- lmer(cont_chng~ race_eth_i+(1|p_id),data = x)
-res_list[[6]] <- lmer(cont_chng~ hh_cat+(1|p_id),data = x)                    
-res_list[[7]] <- lmer(cont_chng~ pol_cat+(1|p_id),data = x)
-res_list[[8]] <- lmer(cont_chng~ emp_cat+(1|p_id),data = x) 
-res_list[[9]] <- lmer(cont_chng~income_cat +(1|p_id), data=x)
-res_list[[10]] <- lmer(cont_chng~ comorb_cat+(1|p_id),data = x)
-res_list[[11]]<-lmer(cont_chng~lca4_full+(1|p_id), data=x)
-res_list[[12]]<- lmer(cont_chng~ base_cont+(1|p_id), data = x)
-res_list[[13]]<-lmer(cont_chng~variant_worry_cat+(1|p_id), data = x)
-res_list[[14]]<-lmer(cont_chng~StringencyIndex+(1|p_id), data=x)
-#res_list[[13]]<-lmer(cont_chng~vax_comm_cat_all+(1|p_id),data=x)
-

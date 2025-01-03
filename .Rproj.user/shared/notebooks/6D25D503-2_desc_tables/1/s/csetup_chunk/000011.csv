@@ -1,0 +1,9 @@
+"0","knitr::opts_chunk$set(echo = TRUE)"
+"0","library(""nnet"")"
+"0","library(""vcd"")"
+"2","Warning:"
+"2"," package ‘vcd’ was built under R version 4.4.2
+"
+"2","Loading required package: grid
+"
+"0","library(""purrr"")"
